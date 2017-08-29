@@ -10,11 +10,11 @@ from libnacl import crypto_secretbox_open, randombytes, \
 
 from plenum.common.did_method import DidMethods, DefaultDidMethods
 from plenum.common.exceptions import EmptyIdentifier
+from plenum.common.util import lxor
 from stp_core.common.log import getlogger
 from stp_core.crypto.signer import Signer
 from stp_core.types import Identifier
 from plenum.common.request import Request
-from plenum.common.util import getTimeBasedId
 
 logger = getlogger()
 
@@ -189,12 +189,14 @@ class Wallet:
         """
 
         idr = self.requiredIdr(idr=identifier or req.identifier)
-        idData = self._getIdData(idr)
-        req.identifier = idr
-        req.reqId = getTimeBasedId()
-        req.digest = req.getDigest()
-        self.ids[idr] = IdData(idData.signer, req.reqId)
-        req.signature = self.signMsg(msg=req.signingState,
+        # idData = self._getIdData(idr)
+        req._identifier = idr
+        req.reqId = req.gen_req_id()
+        # req.digest = req.getDigest()
+        # QUESTION: `self.ids[idr]` would be overwritten if same identifier
+        # is used to send 2 requests, why is `IdData` persisted?
+        # self.ids[idr] = IdData(idData.signer, req.reqId)
+        req.signature = self.signMsg(msg=req.signingState(),
                                      identifier=idr,
                                      otherIdentifier=req.identifier)
 
@@ -213,6 +215,21 @@ class Wallet:
         """
         request = Request(operation=op)
         return self.signRequest(request, identifier)
+
+    def do_multi_sig_on_req(self, request: Request, identifier: str):
+        idr = self.requiredIdr(idr=identifier)
+        signature = self.signMsg(msg=request.signingState(identifier),
+                                 identifier=identifier)
+        request.add_signature(idr, signature)
+
+    def sign_using_multi_sig(self, op: Dict=None, request: Request=None,
+                             identifier=None):
+        assert lxor(op, request)
+        identifier = identifier or self.defaultId
+        if op:
+            request = Request(reqId=Request.gen_req_id(), operation=op)
+        self.do_multi_sig_on_req(request, identifier)
+        return request
 
     def _signerById(self, idr: Identifier):
         signer = self.idsToSigners.get(idr)

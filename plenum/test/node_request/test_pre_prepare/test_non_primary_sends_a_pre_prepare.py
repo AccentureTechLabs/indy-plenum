@@ -4,7 +4,6 @@ import pytest as pytest
 
 from stp_core.loop.eventually import eventually
 from stp_core.common.log import getlogger
-from plenum.common.request import ReqDigest
 from plenum.common.types import f
 from plenum.common.constants import DOMAIN_LEDGER_ID
 from plenum.common.util import compareNamedTuple
@@ -25,9 +24,9 @@ whitelist = [Suspicions.PPR_FRM_NON_PRIMARY.reason,
 
 @pytest.fixture(scope="module")
 def setup(nodeSet, up):
-    def dontSendPrePrepareRequest(self, reqDigest: ReqDigest):
+    def dontSendPrePrepareRequest(self, ppReq):
         logger.debug("EVIL: {} not sending pre-prepare message for request {}".
-                     format(self.name, reqDigest))
+                     format(self.name, ppReq))
         return
 
     pr = getPrimaryReplica(nodeSet, instId)

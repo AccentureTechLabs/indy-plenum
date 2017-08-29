@@ -6,18 +6,16 @@ from functools import partial
 import plenum.common.error
 from plenum.common.types import f
 
-from plenum.common.messages.node_messages import ViewChangeDone, Nomination, Batch, Reelection, \
+from plenum.common.messages.node_messages import Nomination, Batch, Reelection, \
     Primary, BlacklistMsg, RequestAck, RequestNack, Reject, PoolLedgerTxns, Ordered, \
     Propagate, PrePrepare, Prepare, Commit, Checkpoint, ThreePCState, CheckpointState, \
     Reply, InstanceChange, LedgerStatus, ConsistencyProof, CatchupReq, CatchupRep, ViewChangeDone, \
     CurrentState, MessageReq, MessageRep, ElectionType, ThreePhaseType, ThreePhaseMsg
-from plenum.common.request import Request, ReqDigest
+from plenum.common.request import Request
 
-from plenum.common import util
 from plenum.common.util import updateNamedTuple
 from stp_core.common.log import getlogger
 from plenum.server.replica import TPCStat
-from plenum.test.helper import TestReplica
 from plenum.test.test_node import TestNode, TestReplica, getPrimaryReplica, \
     getNonPrimaryReplicas
 from plenum.test.delayers import ppDelay, cDelay
@@ -154,7 +152,6 @@ def send3PhaseMsgWithIncorrectDigest(node: TestNode, msgType: ThreePhaseMsg,
         self.send(prepare, TPCStat.PrepareSent)
 
     def evilSendCommit(self, request):
-        digest = "random"
         commit = Commit(self.instId,
                         request.viewNo,
                         request.ppSeqNo)

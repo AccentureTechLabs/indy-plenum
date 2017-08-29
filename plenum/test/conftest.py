@@ -35,7 +35,7 @@ from stp_core.common.log import getlogger, Logger
 from stp_core.loop.looper import Looper, Prodable
 from plenum.common.constants import TXN_TYPE, DATA, NODE, ALIAS, CLIENT_PORT, \
     CLIENT_IP, NODE_PORT, NYM, CLIENT_STACK_SUFFIX, PLUGIN_BASE_DIR_PATH, ROLE, \
-    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP
+    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, TRUSTEE
 from plenum.common.txn_util import getTxnOrderedFields
 from plenum.common.types import PLUGIN_TYPE_STATS_CONSUMER, f
 from plenum.common.util import getNoInstances, getMaxFailures
@@ -566,6 +566,7 @@ def dirName():
 def poolTxnData(request):
     nodeCount = getValueFromModule(request, "nodeCount", 4)
     data = {'txns': [], 'seeds': {}}
+
     for i, node_name in zip(range(1, nodeCount + 1), genNodeNames(nodeCount)):
         data['seeds'][node_name] = node_name + '0' * (32 - len(node_name))
         steward_name = 'Steward' + str(i)
@@ -592,6 +593,18 @@ def poolTxnData(request):
                 CLIENT_IP: '127.0.0.1',
                 CLIENT_PORT: genHa()[1]
             }
+        })
+
+    # # Add 4 Trustees
+    for i in range(4):
+        trustee_name = 'Trs' + str(i)
+        data['seeds'][trustee_name] = trustee_name + '0' * (32 - len(trustee_name))
+        t_idr = SimpleSigner(seed=data['seeds'][trustee_name].encode()).identifier
+        data['txns'].append({
+            TXN_TYPE: NYM,
+            ROLE: TRUSTEE,
+            ALIAS: trustee_name,
+            TARGET_NYM: t_idr
         })
 
     # Below is some static data that is needed for some CLI tests
@@ -675,6 +688,16 @@ def poolTxnStewardData(poolTxnStewardNames, poolTxnData):
     name = poolTxnStewardNames[0]
     seed = poolTxnData["seeds"][name]
     return name, seed.encode()
+
+
+@pytest.fixture(scope="module")
+def trustee_data(poolTxnData):
+    name_and_seeds = []
+    for txn in poolTxnData['txns']:
+        if txn[ROLE] == TRUSTEE:
+            name = txn[ALIAS]
+            name_and_seeds.append((name, poolTxnData['seeds'][name]))
+    return name_and_seeds
 
 
 @pytest.fixture(scope="module")

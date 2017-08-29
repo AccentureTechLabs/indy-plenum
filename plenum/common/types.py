@@ -64,6 +64,8 @@ class f:  # provides a namespace for reusable field constants
     MSG_TYPE = Field("msg_type", str)
     PARAMS = Field("params", dict)
     PRIMARY = Field("primary", dict)
+    FEES = Field("fees", dict)
+    SIGS = Field('signatures', dict)
 
 
 OPERATION = 'operation'

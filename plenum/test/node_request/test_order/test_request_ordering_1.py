@@ -1,7 +1,6 @@
 import types
 
 from stp_core.loop.eventually import eventually
-from plenum.common.request import ReqDigest
 from plenum.test.helper import sendRandomRequest
 from plenum.test.malicious_behaviors_node import delaysPrePrepareProcessing
 from plenum.test.test_node import getNonPrimaryReplicas
@@ -20,14 +19,14 @@ def testOrderingCase1(looper, nodeSet, up, client1, wallet1):
     so that enough COMMITs reach to trigger ordering.
     """
     delay = 10
-    replica = getNonPrimaryReplicas(nodeSet, instId=0)[0]
+    replica = getNonPrimaryReplicas(nodeSet, instId=0)[-1]
     delaysPrePrepareProcessing(replica.node, delay=delay, instId=0)
 
-    def doNotProcessReqDigest(self, rd: ReqDigest):
+    def doNotProcessRequest(self, rd, frm):
         pass
 
-    patchedMethod = types.MethodType(doNotProcessReqDigest, replica)
-    replica.processRequest = patchedMethod
+    patchedMethod = types.MethodType(doNotProcessRequest, replica)
+    replica.node.processRequest = patchedMethod
 
     def chk(n):
         assert replica.spylog.count(replica.doOrder.__name__) == n

@@ -20,7 +20,7 @@ from plenum.common.exceptions import SuspiciousNode, \
 from plenum.common.message_processor import MessageProcessor
 from plenum.common.messages.node_messages import Reject, Ordered, \
     PrePrepare, Prepare, Commit, Checkpoint, ThreePCState, CheckpointState, ThreePhaseMsg, ThreePhaseKey
-from plenum.common.request import ReqDigest, Request, ReqKey
+from plenum.common.request import Request, ReqKey
 from plenum.common.types import f
 from plenum.common.util import updateNamedTuple, compare_3PC_keys, max_3PC_key, \
     mostCommonElement, SortedDict
@@ -1727,7 +1727,7 @@ class Replica(HasActionQueue, MessageProcessor):
         self.h = 0
         self._lastPrePrepareSeqNo = self.h
 
-    def stashOutsideWatermarks(self, item: Union[ReqDigest, Tuple]):
+    def stashOutsideWatermarks(self, item: Tuple):
         self.stashingWhileOutsideWaterMarks.append(item)
 
     def processStashedMsgsForNewWaterMarks(self):

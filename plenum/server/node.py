@@ -54,7 +54,7 @@ from plenum.persistence.req_id_to_txn import ReqIdrToTxn
 from plenum.persistence.storage import Storage, initStorage, initKeyValueStorage
 from plenum.server.blacklister import Blacklister
 from plenum.server.blacklister import SimpleBlacklister
-from plenum.server.client_authn import ClientAuthNr, SimpleAuthNr
+from plenum.server.client_authn import ClientAuthNr, SimpleAuthNr, CoreAuthNr
 from plenum.server.domain_req_handler import DomainRequestHandler
 from plenum.server.has_action_queue import HasActionQueue
 from plenum.server.instances import Instances
@@ -71,6 +71,7 @@ from plenum.server.primary_selector import PrimarySelector
 from plenum.server.propagator import Propagator
 from plenum.server.quorums import Quorums
 from plenum.server.replicas import Replicas
+from plenum.server.req_authenticator import ReqAuthenticator
 from plenum.server.router import Router
 from plenum.server.suspicion_codes import Suspicions
 from state.pruning_state import PruningState
@@ -1781,8 +1782,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                                           seq_no=seq_no)
         except KeyError:
             logger.debug(
-                "{} can not handle GET_TXN request: ledger doesn't have txn with seqNo={}". format(
-                    self, str(seq_no)))
+                "{} can not handle GET_TXN request: ledger doesn't "
+                "have txn with seqNo={}". format(self, str(seq_no)))
             txn = None
 
         result = {
@@ -2191,7 +2192,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         if isinstance(msg, self.authnWhitelist):
             return  # whitelisted message types rely on RAET for authn
         if isinstance(msg, Propagate):
-            typ = 'propagate '
+            typ = 'propagate'
             req = msg.request
         else:
             typ = ''
@@ -2200,9 +2201,9 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         if not isinstance(req, Mapping):
             req = msg.as_dict
 
-        identifier = self.authNr(req).authenticate(req)
+        identifiers = self.authNr(req).authenticate(req)
         logger.debug("{} authenticated {} signature on {} request {}".
-                     format(self, identifier, typ, req['reqId']),
+                     format(self, identifiers, typ, req['reqId']),
                      extra={"cli": True,
                             "tags": ["node-msg-processing"]})
 
@@ -2210,6 +2211,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         return self.clientAuthNr
 
     def isSignatureVerificationNeeded(self, msg: Any):
+        # TODO: This should be removed, CoreAuthnr or a plugin would be used to
+        # check if needed
         op = msg.get(OPERATION)
         if op:
             if op.get(TXN_TYPE) in openTxns:
@@ -2289,7 +2292,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         :return:
         """
         if ledgerId == POOL_LEDGER_ID:
-            if isinstance(self.poolManager, TxnPoolManager):
+            if isinstance(self.ponBatchCreatedonBatchCreatedoolManager, TxnPoolManager):
                 self.poolManager.reqHandler.onBatchCreated(stateRoot)
         elif ledgerId == DOMAIN_LEDGER_ID:
             self.reqHandler.onBatchCreated(stateRoot)
@@ -2344,19 +2347,19 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         """
         # If the client authenticator is a simple authenticator then add verkey.
         #  For a custom authenticator, handle appropriately
-        if isinstance(self.clientAuthNr, SimpleAuthNr):
+        if isinstance(self.clientAuthNr.core_authenticator, SimpleAuthNr):
             identifier = txn[TARGET_NYM]
             verkey = txn.get(VERKEY)
             v = DidVerifier(verkey, identifier=identifier)
-            if identifier not in self.clientAuthNr.clients:
+            if identifier not in self.clientAuthNr.core_authenticator.clients:
                 role = txn.get(ROLE)
                 if role not in (STEWARD, TRUSTEE, None):
                     logger.debug("Role if present must be {} and not {}".
                                  format(Roles.STEWARD.name, role))
                     return
-                self.clientAuthNr.addIdr(identifier,
-                                         verkey=v.verkey,
-                                         role=role)
+                self.clientAuthNr.core_authenticator.addIdr(identifier,
+                                                            verkey=v.verkey,
+                                                            role=role)
 
     def initStateFromLedger(self, state: State, ledger: Ledger, reqHandler):
         """
@@ -2382,9 +2385,15 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             if txn.get(TXN_TYPE) == NYM:
                 self.addNewRole(txn)
 
-    def defaultAuthNr(self):
+    def init_core_authenticator(self):
         state = self.getState(DOMAIN_LEDGER_ID)
-        return SimpleAuthNr(state=state)
+        return CoreAuthNr(state=state)
+
+    def defaultAuthNr(self) -> ReqAuthenticator:
+        req_authnr = ReqAuthenticator()
+        req_authnr.register_authenticator(self.init_core_authenticator())
+        # TODO: For each plugin, register the authenticator
+        return req_authnr
 
     def processStashedOrderedReqs(self):
         i = 0
@@ -2397,12 +2406,11 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                         self.ledgerManager.last_caught_up_3PC) >= 0:
                     logger.debug(
                         '{} ignoring stashed ordered msg {} since ledger '
-                        'manager has last_caught_up_3PC as {}'. format(
+                        'manager has last_caught_up_3PC as {}'.format(
                             self, msg, self.ledgerManager.last_caught_up_3PC))
                     continue
                 logger.debug(
-                    '{} applying stashed Ordered msg {}'.format(
-                        self, msg))
+                    '{} applying stashed Ordered msg {}'.format(self, msg))
                 # Since the PRE-PREPAREs ans PREPAREs corresponding to these
                 # stashed ordered requests was not processed.
                 for reqKey in msg.reqIdr:

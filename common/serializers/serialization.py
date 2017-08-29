@@ -18,7 +18,7 @@ def serialize_msg_for_signing(msg: Mapping, topLevelKeysToIgnore=None):
 
     :param msg: the message to sign
     :param topLevelKeysToIgnore: the top level keys of the Mapping that should
-    not be included in the serialized form
+     not be included in the serialized form
     :return: a uft-8 encoded version of `msg`
     """
     return signing_serializer.serialize(msg, topLevelKeysToIgnore=topLevelKeysToIgnore)

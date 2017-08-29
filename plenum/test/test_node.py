@@ -10,6 +10,7 @@ from typing import Iterable, Iterator, Tuple, Sequence, Union, Dict, TypeVar, \
     List, Optional
 
 from plenum.common.stacks import nodeStackClass, clientStackClass
+from plenum.server.client_authn import CoreAuthNr
 from plenum.server.domain_req_handler import DomainRequestHandler
 from stp_core.crypto.util import randomSeed
 from stp_core.network.port_dispenser import genHa
@@ -48,6 +49,10 @@ from plenum.common.messages.node_message_factory import node_message_factory
 from plenum.server.replicas import Replicas
 
 logger = getlogger()
+
+
+class TestCoreAuthnr(CoreAuthNr):
+    acceptable_txn_types = CoreAuthNr.acceptable_txn_types.union({'buy', })
 
 
 class TestDomainRequestHandler(DomainRequestHandler):
@@ -237,6 +242,10 @@ class TestNodeCore(StackedTester):
         return TestDomainRequestHandler(self.domainLedger,
                                         self.states[DOMAIN_LEDGER_ID],
                                         self.reqProcessors)
+
+    def init_core_authenticator(self):
+        state = self.getState(DOMAIN_LEDGER_ID)
+        return TestCoreAuthnr(state=state)
 
 
 node_spyables = [Node.handleOneNodeMsg,

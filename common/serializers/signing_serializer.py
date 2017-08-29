@@ -38,16 +38,16 @@ class SigningSerializer:
 
         Examples:
         ::
-        >>> serialize("str")
+        >>> serialize('str')
         'str'
         >>> serialize([1,2,3,4,5])
         '1,2,3,4,5'
-        >>> signing.serlize({1:'a', 2:'b'})
+        >>> serialize({1:'a', 2:'b'})
         '1:a|2:b'
-        >>> signing.serlize({1:'a', 2:'b', 3:[1,{2:'k'}]})
+        >>> serialize({1:'a', 2:'b', 3:[1,{2:'k'}]})
         '1:a|2:b|3:1,2:k'
 
-        :param obj: the object to serlize
+        :param obj: the object to serialize
         :param level: a parameter used internally for recursion to serialize nested
          data structures
          :param topLevelKeysToIgnore: the list of top level keys to ignore for
@@ -70,7 +70,8 @@ class SigningSerializer:
             for k in keys:
                 onm = ".".join([objname, k]) if objname else k
                 strs.append(
-                    str(k) + ":" + self.serialize(obj[k], level + 1, onm, toBytes=False))
+                    str(k) + ":" + self.serialize(obj[k], level + 1, onm,
+                                                  toBytes=False))
             res = "|".join(strs)
         elif isinstance(obj, Iterable):
             strs = []

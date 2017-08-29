@@ -63,12 +63,13 @@ class ProofConstructor:
         self.nodes = []
         self.exempt = []
 
-    def push(self, mode, nodes=[]):
+    def push(self, mode, nodes=None):
         global proving
         proving = True
         self.mode.append(mode)
         self.exempt.append(set())
         if mode == VERIFYING:
+            nodes = nodes or []
             self.nodes.append(set([rlp_encode(x) for x in nodes]))
         else:
             self.nodes.append(set())
