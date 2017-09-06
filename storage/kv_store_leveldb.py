@@ -80,7 +80,8 @@ class KeyValueStorageLeveldb(KeyValueStorage):
                 b.Put(key, value)
             elif op == self.REMOVE_OP:
                 b.Delete(key)
-            raise ValueError('Unknown operation')
+            else:
+                raise ValueError('Unknown operation')
         self._db.Write(b, sync=False)
 
     def open(self):

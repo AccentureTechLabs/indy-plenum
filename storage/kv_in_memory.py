@@ -41,7 +41,8 @@ class KeyValueStorageInMemory(KeyValueStorage):
                 self.put(key, value)
             elif op == self.REMOVE_OP:
                 self.remove(key)
-            raise ValueError('Unknown operation')
+            else:
+                raise ValueError('Unknown operation')
 
     def open(self):
         pass
