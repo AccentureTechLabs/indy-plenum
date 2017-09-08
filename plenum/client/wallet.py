@@ -219,11 +219,13 @@ class Wallet:
     def do_multi_sig_on_req(self, request: Request, identifier: str):
         idr = self.requiredIdr(idr=identifier)
         signature = self.signMsg(msg=request.signingState(identifier),
-                                 identifier=identifier)
+                                 identifier=idr)
         request.add_signature(idr, signature)
 
     def sign_using_multi_sig(self, op: Dict=None, request: Request=None,
                              identifier=None):
+        # One and only 1 of `op` and `request` must be provided.
+        # If `request` is provided it must have `reqId`
         assert lxor(op, request)
         identifier = identifier or self.defaultId
         if op:

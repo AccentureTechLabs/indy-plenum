@@ -9,10 +9,14 @@ def send_mint_public(trustees, outputs, sender_client, sender_wallet):
         TXN_TYPE: MINT_PUBLIC,
         OUTPUTS: outputs,
     }
-    for wallet in trustees:
-        signatures[wallet.defaultId] = wallet.signMsg(
-            op, identifier=wallet.defaultId)
-    op[f.SIGS.nm] = signatures
+    first_trustee = trustees[0]
+    request = first_trustee.sign_using_multi_sig(
+        op, identifier=first_trustee.defaultId)
+    for wallet in trustees[1:]:
+        signatures[wallet.defaultId] = wallet.do_multi_sig_on_req(
+            request, identifier=wallet.defaultId)
+    sender_client.submitReqs(request)
+    return request
 
 
 def send_xfer(inputs, outputs, sender_client, sender_wallet, extra_data=None):

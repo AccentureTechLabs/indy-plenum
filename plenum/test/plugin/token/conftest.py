@@ -33,6 +33,6 @@ def trustee_wallets(trustee_data):
     wallets = []
     for name, seed in trustee_data:
         w = Wallet(name)
-        w.addIdentifier(signer=SimpleSigner(seed=seed))
+        w.addIdentifier(signer=SimpleSigner(seed=seed.encode()))
         wallets.append(w)
     return wallets

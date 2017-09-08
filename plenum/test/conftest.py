@@ -694,7 +694,7 @@ def poolTxnStewardData(poolTxnStewardNames, poolTxnData):
 def trustee_data(poolTxnData):
     name_and_seeds = []
     for txn in poolTxnData['txns']:
-        if txn[ROLE] == TRUSTEE:
+        if txn.get(ROLE) == TRUSTEE:
             name = txn[ALIAS]
             name_and_seeds.append((name, poolTxnData['seeds'][name]))
     return name_and_seeds
