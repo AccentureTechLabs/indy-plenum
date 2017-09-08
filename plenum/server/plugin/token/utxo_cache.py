@@ -1,11 +1,12 @@
-from typing import Optional, List
+from typing import List
 
 from plenum.common.util import updateNamedTuple
 from plenum.server.plugin.token.types import Output
 from storage.kv_store import KeyValueStorage
+from storage.optimistic_kv_store import OptimisticKVStore
 
 
-class UTXOCache:
+class UTXOCache(OptimisticKVStore):
     # TODO: Extract storing in-memory`level`s like functionality from IdrCache
     """
     Used to answer 2 questions:
@@ -18,7 +19,7 @@ class UTXOCache:
         Type2 key is an address prepended with "1"
     """
     def __init__(self, kv_store: KeyValueStorage):
-        self._store = kv_store
+        super().__init__(kv_store)
 
     def add_output(self, output: Output):
         type1_key = self._create_type1_key(output)
