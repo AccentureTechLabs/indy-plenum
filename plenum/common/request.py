@@ -10,6 +10,8 @@ from stp_core.types import Identifier
 
 
 class Request:
+    idr_delimiter = ','
+
     def __init__(self,
                  identifier: Identifier=None,
                  reqId: int=None,
@@ -21,12 +23,18 @@ class Request:
         self.signatures = signatures
         self.reqId = reqId
         self.operation = operation
-        self.digest = self.getDigest()
+        self._digest = None
+
+    @property
+    def digest(self):
+        if self._digest is None:
+            self._digest = self.getDigest()
+        return self._digest
 
     @property
     def as_dict(self):
         return {
-            f.IDENTIFIER.nm: self.identifier,
+            f.IDENTIFIER.nm: self._identifier,
             f.REQ_ID.nm: self.reqId,
             OPERATION: self.operation,
             f.SIG.nm: self.signature,
@@ -79,7 +87,7 @@ class Request:
 
     @property
     def identifier(self):
-        return self._identifier or ''.join(self._all_identifiers)
+        return self._identifier or self.gen_idr_from_sigs(self.signatures)
 
     @property
     def _all_identifiers(self):
@@ -89,15 +97,14 @@ class Request:
     def gen_req_id():
         return getTimeBasedId()
 
+    @staticmethod
+    def gen_idr_from_sigs(signatures: Dict):
+        return Request.idr_delimiter.join(sorted(signatures.keys()))
+
     def add_signature(self, identifier, signature):
         if not isinstance(self.signatures, Dict):
             self.signatures = {}
         self.signatures[identifier] = signature
-
-    # def _hashed_idrs(self):
-    #     # Only called when request is a multisig
-    #     assert self.signatures
-    #     return
 
     def __hash__(self):
         return hash(self.serialized())
@@ -120,3 +127,10 @@ class SafeRequest(Request, ClientMessageValidator):
     def __init__(self, **kwargs):
         self.validate(kwargs)
         super().__init__(**kwargs)
+
+    def validate(self, dct):
+        super().validate(dct)
+        if not (dct.get(f.IDENTIFIER.nm) or dct.get(f.SIGS.nm)):
+            raise TypeError('{} {}'.
+                            format(self.__error_msg_prefix,
+                                   'Missing both signatures and identifier'))

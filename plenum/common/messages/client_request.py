@@ -1,8 +1,10 @@
 from plenum.common.constants import NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT, ALIAS, SERVICES, TXN_TYPE, DATA, \
     TARGET_NYM, VERKEY, ROLE, NODE, NYM, GET_TXN, VALIDATOR
-from plenum.common.messages.fields import NetworkIpAddressField, NetworkPortField, NonEmptyStringField, IterableField, \
-    ChooseField, ConstantField, DestNodeField, VerkeyField, DestNymField, RoleField, TxnSeqNoField, IdentifierField, \
-    NonNegativeNumberField, SignatureField
+from plenum.common.messages.fields import NetworkIpAddressField, \
+    NetworkPortField, NonEmptyStringField, IterableField, \
+    ChooseField, ConstantField, DestNodeField, VerkeyField, DestNymField, \
+    RoleField, TxnSeqNoField, IdentifierField, \
+    NonNegativeNumberField, SignatureField, MapField
 from plenum.common.messages.message_base import MessageValidator
 from plenum.common.types import OPERATION, f
 
@@ -101,9 +103,11 @@ class ClientMessageValidator(MessageValidator):
             self.schema = tuple(schema)
 
     schema = (
-        (f.IDENTIFIER.nm, IdentifierField()),
+        (f.IDENTIFIER.nm, IdentifierField(nullable=True)),
         (f.REQ_ID.nm, NonNegativeNumberField()),
         (OPERATION, ClientOperationField()),
         (f.SIG.nm, SignatureField(optional=True)),
         (f.DIGEST.nm, NonEmptyStringField(optional=True)),
+        (f.SIGS.nm, MapField(IdentifierField(),
+                             SignatureField(), nullable=True)),
     )

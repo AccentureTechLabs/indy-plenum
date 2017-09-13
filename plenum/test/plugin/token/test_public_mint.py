@@ -1,5 +1,5 @@
 # It is assumed the initial minting will give some tokens to the Sovrin
-# Foundation and Exchange. From then on, exchange will be responsible for
+# Foundation and token seller platform. From then on, exchange will be responsible for
 # giving tokens to "users".
 from plenum.test.pool_transactions.conftest import clientAndWallet1, \
     client1, wallet1, client1Connected, looper
@@ -17,4 +17,4 @@ def test_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
     sf_master_gets = 60
     seller_gets = total_mint - sf_master_gets
     outputs = [[SF_address, sf_master_gets], [seller_address, seller_gets]]
-    send_mint_public(trustee_wallets, outputs, client1, wallet1)
+    send_mint_public(looper, trustee_wallets, outputs, client1)

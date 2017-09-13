@@ -1,4 +1,3 @@
-
 from plenum.common.constants import TXN_TYPE
 from plenum.common.exceptions import NoAuthenticatorFound
 from plenum.common.types import OPERATION
@@ -41,5 +40,5 @@ class ReqAuthenticator:
 
     @property
     def core_authenticator(self):
-        assert self._authenticators, 'No authenticator regsitered yet'
+        assert self._authenticators, 'No authenticator registered yet'
         return self._authenticators[0]

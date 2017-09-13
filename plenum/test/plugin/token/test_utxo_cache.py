@@ -8,21 +8,13 @@ import pytest
 from plenum.common.util import randomString
 from plenum.server.plugin.token.types import Output
 from plenum.server.plugin.token.utxo_cache import UTXOCache
-from storage.kv_store import KeyValueStorage
-from storage.kv_in_memory import KeyValueStorageInMemory
-from storage.kv_store_leveldb import KeyValueStorageLeveldb
+from storage.test.conftest import parametrised_storage
 
 
-@pytest.yield_fixture(params=['memory', 'leveldb'])
-def utxo_cache(request, tmpdir_factory) -> KeyValueStorage:
-    if request.param == 'memory':
-        db = KeyValueStorageInMemory()
-    if request.param == 'leveldb':
-        db = KeyValueStorageLeveldb(tmpdir_factory.mktemp('').strpath,
-                                    'some_db')
-    cache = UTXOCache(db)
-    yield cache
-    db.close()
+@pytest.fixture()             # noqa
+def utxo_cache(parametrised_storage) -> UTXOCache:
+    cache = UTXOCache(parametrised_storage)
+    return cache
 
 
 def gen_outputs(num):

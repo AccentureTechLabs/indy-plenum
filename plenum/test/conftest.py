@@ -13,6 +13,7 @@ import time
 from typing import Dict, Any
 
 from ledger.genesis_txn.genesis_txn_file_util import create_genesis_txn_init_ledger
+from plenum.common.signer_did import DidSigner
 from plenum.common.signer_simple import SimpleSigner
 from plenum.test import waits
 
@@ -35,7 +36,7 @@ from stp_core.common.log import getlogger, Logger
 from stp_core.loop.looper import Looper, Prodable
 from plenum.common.constants import TXN_TYPE, DATA, NODE, ALIAS, CLIENT_PORT, \
     CLIENT_IP, NODE_PORT, NYM, CLIENT_STACK_SUFFIX, PLUGIN_BASE_DIR_PATH, ROLE, \
-    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, TRUSTEE
+    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, TRUSTEE, VERKEY
 from plenum.common.txn_util import getTxnOrderedFields
 from plenum.common.types import PLUGIN_TYPE_STATS_CONSUMER, f
 from plenum.common.util import getNoInstances, getMaxFailures
@@ -599,12 +600,13 @@ def poolTxnData(request):
     for i in range(4):
         trustee_name = 'Trs' + str(i)
         data['seeds'][trustee_name] = trustee_name + '0' * (32 - len(trustee_name))
-        t_idr = SimpleSigner(seed=data['seeds'][trustee_name].encode()).identifier
+        t_sgnr = DidSigner(seed=data['seeds'][trustee_name].encode())
         data['txns'].append({
             TXN_TYPE: NYM,
             ROLE: TRUSTEE,
             ALIAS: trustee_name,
-            TARGET_NYM: t_idr
+            TARGET_NYM: t_sgnr.identifier,
+            VERKEY: t_sgnr.verkey
         })
 
     # Below is some static data that is needed for some CLI tests
@@ -708,6 +710,7 @@ def poolTxnClient(tdirWithPoolTxns, tdirWithDomainTxns, txnPoolNodeSet):
 
 @pytest.fixture(scope="module")
 def testNodeClass(patchPluginManager):
+    TestNode.ledger_ids += []
     return TestNode
 
 

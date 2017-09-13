@@ -73,13 +73,14 @@ def test_set_get_reject_keys_basic(optimistic_store):
             chk_keys(batch, uncommitted=False, committed=False)
 
 
-def test_set_get_reject_keys_same_keys(optimistic_store):
+def test_set_get_reject_same_keys(optimistic_store):
     # Set some keys, commit them, check their values, set new values for them
     # in new batch, check committed and non committed values
     num_keys = 10
     keys = [randomString(32).encode() for _ in range(num_keys)]
     vals_1 = {k: randomString(100).encode() for k in keys}
     vals_2 = {k: randomString(100).encode() for k in keys}
+    vals_3 = {k: randomString(100).encode() for k in keys}
 
     for k, v in vals_1.items():
         optimistic_store.set(k, v, is_committed=False)
@@ -99,3 +100,15 @@ def test_set_get_reject_keys_same_keys(optimistic_store):
     for k, v in vals_2.items():
         assert optimistic_store.get(k, is_committed=False) == v
         assert optimistic_store.get(k, is_committed=True) == vals_1[k]
+
+    # More than 1 uncommitted batch exists containing the same keys but value
+    # of a key is equal to the value in last batch
+    for k, v in vals_3.items():
+        optimistic_store.set(k, v, is_committed=False)
+
+    optimistic_store.create_batch_from_current(randomString(10))
+
+    for k, v in vals_3.items():
+        assert optimistic_store.get(k, is_committed=False) != vals_1[k]
+        assert optimistic_store.get(k, is_committed=False) != vals_2[k]
+        assert optimistic_store.get(k, is_committed=False) == v

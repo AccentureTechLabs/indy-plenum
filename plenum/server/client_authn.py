@@ -274,7 +274,7 @@ class CoreAuthNr(SimpleAuthNr):
                                        signatures=signatures)
 
     def serializeForSig(self, msg, identifier=None, topLevelKeysToIgnore=None):
-        if f.IDENTIFIER.nm not in msg:
-            msg[f.IDENTIFIER.nm] = identifier
+        if not msg.get(f.IDENTIFIER.nm):
+            msg = {**msg, f.IDENTIFIER.nm: identifier}
         return serialize_msg_for_signing(
             msg, topLevelKeysToIgnore=topLevelKeysToIgnore)

@@ -1,9 +1,10 @@
 from plenum.common.constants import TXN_TYPE
 from plenum.common.types import f
 from plenum.server.plugin.token.constants import MINT_PUBLIC, OUTPUTS, XFER
+from plenum.test.helper import waitForSufficientRepliesForRequests
 
 
-def send_mint_public(trustees, outputs, sender_client, sender_wallet):
+def send_mint_public(looper, trustees, outputs, sender_client):
     signatures = {}
     op = {
         TXN_TYPE: MINT_PUBLIC,
@@ -16,6 +17,8 @@ def send_mint_public(trustees, outputs, sender_client, sender_wallet):
         signatures[wallet.defaultId] = wallet.do_multi_sig_on_req(
             request, identifier=wallet.defaultId)
     sender_client.submitReqs(request)
+    waitForSufficientRepliesForRequests(looper, sender_client,
+                                        requests=[request], fVal=1)
     return request
 
 

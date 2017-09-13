@@ -45,7 +45,7 @@ from plenum.common.stacks import nodeStackClass, clientStackClass
 from plenum.common.startable import Status, Mode
 from plenum.common.throttler import Throttler
 from plenum.common.types import PLUGIN_TYPE_VERIFICATION, \
-    PLUGIN_TYPE_PROCESSING, OPERATION, f
+    PLUGIN_TYPE_PROCESSING, OPERATION, f, PLUGIN_TYPE_AUTHENTICATOR
 from plenum.common.util import friendlyEx, getMaxFailures, pop_keys, \
     compare_3PC_keys, get_utc_epoch, SortedDict
 from plenum.common.verifier import DidVerifier
@@ -147,6 +147,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         self.states = {}  # type: Dict[int, State]
 
         self.states[DOMAIN_LEDGER_ID] = self.loadDomainState()
+        # self.req_authenticators = self.getPluginsByType(pluginPaths,
+        #                                                 PLUGIN_TYPE_AUTHENTICATOR)
         self.reqHandler = self.getDomainReqHandler()
         self.initDomainState()
 
@@ -2261,8 +2263,15 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                 logger.debug('{} popped {} from txn to batch seqNo map'.
                              format(self, old))
 
+    @staticmethod
+    def idr_from_txn(txn):
+        if txn[f.IDENTIFIER.nm]:
+            return txn[f.IDENTIFIER.nm]
+        else:
+            return Request.gen_idr_from_sigs(txn[f.SIGS.nm])
+
     def updateSeqNoMap(self, committedTxns):
-        self.seqNoDB.addBatch((txn[f.IDENTIFIER.nm], txn[f.REQ_ID.nm],
+        self.seqNoDB.addBatch((self.idr_from_txn(txn), txn[f.REQ_ID.nm],
                                txn[F.seqNo.name]) for txn in committedTxns)
 
     def commitAndSendReplies(self, reqHandler, ppTime, reqs: List[Request],
@@ -2292,7 +2301,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         :return:
         """
         if ledgerId == POOL_LEDGER_ID:
-            if isinstance(self.ponBatchCreatedonBatchCreatedoolManager, TxnPoolManager):
+            if isinstance(self.poolManager, TxnPoolManager):
                 self.poolManager.reqHandler.onBatchCreated(stateRoot)
         elif ledgerId == DOMAIN_LEDGER_ID:
             self.reqHandler.onBatchCreated(stateRoot)
@@ -2392,6 +2401,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
     def defaultAuthNr(self) -> ReqAuthenticator:
         req_authnr = ReqAuthenticator()
         req_authnr.register_authenticator(self.init_core_authenticator())
+        # for authnr in self.req_authenticators:
+        #     req_authnr.register_authenticator(authnr)
         # TODO: For each plugin, register the authenticator
         return req_authnr
 

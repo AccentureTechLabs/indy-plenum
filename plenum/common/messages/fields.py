@@ -319,14 +319,18 @@ class DestNymField(Base58Field):
 class RequestIdentifierField(FieldBase):
     _base_types = (list, tuple)
     _length = 2
+    _idr_field = IdentifierField()
+    _rid_field = NonNegativeNumberField()
 
     def _specific_validation(self, val):
         if len(val) != self._length:
             return "should have length {}".format(self._length)
-        idr_error = IdentifierField().validate(val[0])
+        # idr_error = IdentifierField().validate(val[0])
+        from plenum.common.request import Request
+        idr_error = any(self._idr_field.validate(i) for i in val[0].split(Request.idr_delimiter))
         if idr_error:
             return idr_error
-        ts_error = NonNegativeNumberField().validate(val[1])
+        ts_error = self._rid_field.validate(val[1])
         if ts_error:
             return ts_error
 
