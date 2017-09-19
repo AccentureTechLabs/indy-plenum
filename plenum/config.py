@@ -201,3 +201,5 @@ WALLET_FILE_MODE = 0o600  # -rw-------
 # because of being delivered out of order or being out of watermarks or not
 # having finalised requests.
 ACCEPTABLE_DEVIATION_PREPREPARE_SECS = 600  # seconds
+
+ENABLED_PLUGINS = {'token', }

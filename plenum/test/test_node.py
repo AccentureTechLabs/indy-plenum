@@ -56,6 +56,8 @@ class TestCoreAuthnr(CoreAuthNr):
 
 
 class TestDomainRequestHandler(DomainRequestHandler):
+    valid_txn_types = {'buy', }
+
     def _updateStateWithSingleTxn(self, txn, isCommitted=False):
         typ = txn.get(TXN_TYPE)
         if typ == 'buy':
@@ -241,7 +243,7 @@ class TestNodeCore(StackedTester):
     def getDomainReqHandler(self):
         return TestDomainRequestHandler(self.domainLedger,
                                         self.states[DOMAIN_LEDGER_ID],
-                                        self.reqProcessors)
+                                        self.reqProcessors, self.config)
 
     def init_core_authenticator(self):
         state = self.getState(DOMAIN_LEDGER_ID)

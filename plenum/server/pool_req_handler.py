@@ -18,12 +18,16 @@ logger = getlogger()
 
 
 class PoolRequestHandler(RequestHandler):
+    valid_txn_types = {NODE, }
 
     def __init__(self, ledger: Ledger, state: State,
                  domainState: State):
         super().__init__(ledger, state)
         self.domainState = domainState
         self.stateSerializer = pool_state_serializer
+
+    def doStaticValidation(self, identifier, reqId, operation):
+        pass
 
     def validate(self, req: Request, config=None):
         typ = req.operation.get(TXN_TYPE)

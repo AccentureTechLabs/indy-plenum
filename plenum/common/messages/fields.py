@@ -2,9 +2,10 @@ import ipaddress
 import json
 import base58
 import re
+from abc import ABCMeta, abstractmethod
 
 from plenum.common.constants import DOMAIN_LEDGER_ID, POOL_LEDGER_ID
-from abc import ABCMeta, abstractmethod
+from plenum import PLUGIN_LEDGER_IDS
 
 
 class FieldValidator(metaclass=ABCMeta):
@@ -257,7 +258,7 @@ class MessageField(FieldBase):
 
 class LedgerIdField(ChooseField):
     _base_types = (int,)
-    ledger_ids = (POOL_LEDGER_ID, DOMAIN_LEDGER_ID)
+    ledger_ids = (POOL_LEDGER_ID, DOMAIN_LEDGER_ID) + tuple(PLUGIN_LEDGER_IDS)
 
     def __init__(self, **kwargs):
         super().__init__(self.ledger_ids, **kwargs)

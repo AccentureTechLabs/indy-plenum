@@ -23,9 +23,16 @@ class RequestHandler:
         self.ledger = ledger
         self.state = state
 
-    def validate(self, req: Request, config=None):
+    def doStaticValidation(self, identifier, reqId, operation):
         """
-        Validates request. Raises exception if request is invalid.
+        Does static validation like presence of required fields,
+        properly formed request, etc
+        """
+
+    def validate(self, req: Request):
+        """
+        Does dynamic validation (state based validation) on request.
+        Raises exception if request is invalid.
         """
 
     def apply(self, req: Request, cons_time: int):
@@ -58,7 +65,7 @@ class RequestHandler:
         self.state.commit(rootHash=stateRoot)
         return txnsWithSeqNo(seqNoStart, seqNoEnd, committedTxns)
 
-    def onBatchCreated(self, stateRoot):
+    def onBatchCreated(self, state_root):
         pass
 
     def onBatchRejected(self):

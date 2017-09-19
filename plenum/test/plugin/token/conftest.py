@@ -6,7 +6,7 @@ from plenum.common.signer_simple import SimpleSigner
 from plenum.common.util import randomSeed
 from plenum.server.plugin.token.client_authnr import TokenAuthNr
 from plenum.server.plugin.token.constants import TOKEN_LEDGER_ID
-from plenum.server.plugin.token.main import patch_node_class, patch_node_obj
+from plenum.server.plugin.token.main import update_node_class, update_node_obj
 from plenum.server.plugin.token.wallet import TokenWallet
 from plenum.test.plugin.helper import getPluginPath
 from plenum.test.test_node import TestNode
@@ -54,10 +54,10 @@ def allPluginsPath(allPluginsPath):
 
 @pytest.fixture(scope="module")
 def testNodeClass(patchPluginManager):
-    return patch_node_class(TestNode)
+    return update_node_class(TestNode)
 
 
 @pytest.fixture(scope="module")
 def txnPoolNodeSet(txnPoolNodeSet):
     for node in txnPoolNodeSet:
-        patch_node_obj(node)
+        update_node_obj(node)

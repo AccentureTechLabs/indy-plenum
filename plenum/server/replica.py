@@ -709,9 +709,8 @@ class Replica(HasActionQueue, MessageProcessor):
         self.send(ppReq, TPCStat.PrePrepareSent)
 
     def readyFor3PC(self, key: ReqKey):
-        cls = self.node.__class__
         fin_req = self.requests[key].finalised
-        self.requestQueues[cls.ledgerIdForRequest(fin_req)].add(key)
+        self.requestQueues[self.node.ledgerIdForRequest(fin_req)].add(key)
 
     def serviceQueues(self, limit=None):
         """

@@ -16,12 +16,17 @@ logger = getlogger()
 
 class DomainRequestHandler(RequestHandler):
     stateSerializer = domain_state_serializer
+    valid_txn_types = {NYM, }
 
-    def __init__(self, ledger, state, reqProcessors):
+    def __init__(self, ledger, state, config, reqProcessors):
         super().__init__(ledger, state)
+        self.config = config
         self.reqProcessors = reqProcessors
 
-    def validate(self, req: Request, config=None):
+    def doStaticValidation(self, identifier, reqId, operation):
+        pass
+
+    def validate(self, req: Request):
         if req.operation.get(TXN_TYPE) == NYM:
             origin = req.identifier
             error = None
@@ -29,10 +34,10 @@ class DomainRequestHandler(RequestHandler):
                                   origin, isCommitted=False):
                 error = "Only Steward is allowed to do these transactions"
             if req.operation.get(ROLE) == STEWARD:
-                if self.stewardThresholdExceeded(config):
+                if self.stewardThresholdExceeded(self.config):
                     error = "New stewards cannot be added by other stewards " \
                             "as there are already {} stewards in the system".\
-                            format(config.stewardThreshold)
+                            format(self.config.stewardThreshold)
             if error:
                 raise UnauthorizedClientRequest(req.identifier,
                                                 req.reqId,
