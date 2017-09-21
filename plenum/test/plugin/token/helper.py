@@ -22,6 +22,13 @@ def send_mint_public(looper, trustees, outputs, sender_client):
     return request
 
 
+def do_public_minting(looper, trustees, sender_client, total_mint,
+                      sf_master_share, sf_address, seller_address):
+    seller_share = total_mint - sf_master_share
+    outputs = [[sf_address, sf_master_share], [seller_address, seller_share]]
+    send_mint_public(looper, trustees, outputs, sender_client)
+
+
 def send_xfer(inputs, outputs, sender_client, sender_wallet, extra_data=None):
     op = {
         TXN_TYPE: XFER,

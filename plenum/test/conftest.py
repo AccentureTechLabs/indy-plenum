@@ -57,6 +57,15 @@ logger = getlogger()
 config = getConfig()
 
 
+def get_data_for_role(pool_txn_data, role):
+    name_and_seeds = []
+    for txn in pool_txn_data['txns']:
+        if txn.get(ROLE) == role:
+            name = txn[ALIAS]
+            name_and_seeds.append((name, pool_txn_data['seeds'][name]))
+    return name_and_seeds
+
+
 @pytest.mark.firstresult
 def pytest_xdist_make_scheduler(config, log):
     return GroupedLoadScheduling(config, log)
@@ -694,12 +703,7 @@ def poolTxnStewardData(poolTxnStewardNames, poolTxnData):
 
 @pytest.fixture(scope="module")
 def trustee_data(poolTxnData):
-    name_and_seeds = []
-    for txn in poolTxnData['txns']:
-        if txn.get(ROLE) == TRUSTEE:
-            name = txn[ALIAS]
-            name_and_seeds.append((name, poolTxnData['seeds'][name]))
-    return name_and_seeds
+    return get_data_for_role(poolTxnData, TRUSTEE)
 
 
 @pytest.fixture(scope="module")

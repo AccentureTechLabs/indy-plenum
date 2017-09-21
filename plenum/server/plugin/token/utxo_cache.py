@@ -21,12 +21,12 @@ class UTXOCache(OptimisticKVStore):
     def __init__(self, kv_store: KeyValueStorage):
         super().__init__(kv_store)
 
-    def add_output(self, output: Output):
+    def add_output(self, output: Output, is_committed=False):
         type1_key = self._create_type1_key(output)
         type2_key = self._create_type2_key(output.address)
         type1_val = str(output.value)
         try:
-            seq_nos = self._store.get(type2_key)
+            seq_nos = self.get(type2_key, is_committed)
             if isinstance(seq_nos, (bytes, bytearray)):
                 seq_nos = seq_nos.decode()
             seq_nos = self._parse_type2_val(seq_nos)
@@ -37,17 +37,17 @@ class UTXOCache(OptimisticKVStore):
             seq_nos.append(seq_no_str)
         type2_val = self._create_type2_val(seq_nos)
         batch = [(type1_key, type1_val), (type2_key, type2_val)]
-        self._store.setBatch(batch)
+        self.setBatch(batch, is_committed=is_committed)
 
-    def get_output(self, output: Output) -> Output:
+    def get_output(self, output: Output, is_committed=False) -> Output:
         type1_key = self._create_type1_key(output)
-        val = self._store.get(type1_key)
+        val = self.get(type1_key, is_committed)
         return Output(output.address, output.seq_no, float(val))
 
-    def spend_output(self, output: Output):
+    def spend_output(self, output: Output, is_committed=False):
         type1_key = self._create_type1_key(output)
         type2_key = self._create_type2_key(output.address)
-        seq_nos = self._store.get(type2_key)
+        seq_nos = self.get(type2_key, is_committed)
         if isinstance(seq_nos, (bytes, bytearray)):
             seq_nos = seq_nos.decode()
         seq_nos = self._parse_type2_val(seq_nos)
@@ -61,12 +61,13 @@ class UTXOCache(OptimisticKVStore):
             batch.append((self._store.WRITE_OP, type2_key, type2_val))
         else:
             batch.append((self._store.REMOVE_OP, type2_key, None))
-        self._store.do_ops_in_batch(batch)
+        self.do_ops_in_batch(batch, is_committed=is_committed)
 
-    def get_unspent_outputs(self, address: str) -> List[Output]:
+    def get_unspent_outputs(self, address: str,
+                            is_committed=False) -> List[Output]:
         type2_key = self._create_type2_key(address)
         try:
-            seq_nos = self._store.get(type2_key)
+            seq_nos = self.get(type2_key, is_committed)
             if isinstance(seq_nos, (bytes, bytearray)):
                 seq_nos = seq_nos.decode()
             seq_nos = self._parse_type2_val(seq_nos)
@@ -75,8 +76,8 @@ class UTXOCache(OptimisticKVStore):
         if not seq_nos:
             return []
         outputs = [Output(address, int(seq_no), None) for seq_no in seq_nos]
-        return [updateNamedTuple(out, value=float(self._store.get(
-            self._create_type1_key(out)))) for out in outputs]
+        return [updateNamedTuple(out, value=float(self.get(
+            self._create_type1_key(out), is_committed))) for out in outputs]
 
     @staticmethod
     def _create_type1_key(output: Output) -> str:

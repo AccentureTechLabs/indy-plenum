@@ -90,7 +90,7 @@ class Request:
         return self._identifier or self.gen_idr_from_sigs(self.signatures)
 
     @property
-    def _all_identifiers(self):
+    def all_identifiers(self):
         return sorted(self.signatures.keys())
 
     @staticmethod

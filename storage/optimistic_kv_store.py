@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Tuple, List
+from typing import Tuple, List, Iterable
 
 from storage.kv_store import KeyValueStorage
 
@@ -43,7 +43,7 @@ class OptimisticKVStore:
         else:
             raise ValueError
 
-    def get(self, key, is_committed=True):
+    def get(self, key, is_committed=False):
         if is_committed:
             value = self._store.get(key)
         else:
@@ -61,11 +61,20 @@ class OptimisticKVStore:
                     value = self._store.get(key)
         return value
 
-    def set(self, key, value, is_committed=True):
+    def set(self, key, value, is_committed=False):
         if is_committed:
             self._store.put(key, value)
         else:
             self.current_batch_ops.append((key, value))
+
+    def remove(self, key, is_committed=False):
+        if isinstance(key, str):
+            key = key.encode()
+        if is_committed:
+            self._store.remove(key)
+        else:
+            self.current_batch_ops = [(k, v) for k, v in
+                                      self.current_batch_ops if k == key]
 
     @property
     def first_batch_idr(self):
@@ -73,3 +82,22 @@ class OptimisticKVStore:
             return self.un_committed[0][0]
         else:
             return None
+
+    def setBatch(self, batch: Iterable[Tuple], is_committed=False):
+        if is_committed:
+            self._store.setBatch(batch)
+        else:
+            for k, v in batch:
+                self.set(k, v, is_committed=False)
+
+    def do_ops_in_batch(self, batch: Iterable[Tuple], is_committed=False):
+        if is_committed:
+            self._store.do_ops_in_batch(batch)
+        else:
+            for op, key, value in batch:
+                if op == KeyValueStorage.WRITE_OP:
+                    self.set(key, value, is_committed=False)
+                elif op == KeyValueStorage.REMOVE_OP:
+                    self.remove(key, is_committed=False)
+                else:
+                    raise ValueError('Unknown operation')

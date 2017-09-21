@@ -254,7 +254,7 @@ class CoreAuthNr(SimpleAuthNr):
         """
         to_serialize = {k: v for k, v in req_data.items()
                         if k not in self.excluded_from_signing}
-        if f.SIGS.nm not in req_data:
+        if f.SIGS.nm not in req_data or req_data[f.SIGS.nm] is None:
             try:
                 # if not identifier:
                 identifier = identifier or self._extract_identifier(req_data)

@@ -26,7 +26,7 @@ class PoolRequestHandler(RequestHandler):
         self.domainState = domainState
         self.stateSerializer = pool_state_serializer
 
-    def doStaticValidation(self, identifier, reqId, operation):
+    def doStaticValidation(self, request: Request):
         pass
 
     def validate(self, req: Request, config=None):

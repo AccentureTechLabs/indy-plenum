@@ -23,7 +23,7 @@ class DomainRequestHandler(RequestHandler):
         self.config = config
         self.reqProcessors = reqProcessors
 
-    def doStaticValidation(self, identifier, reqId, operation):
+    def doStaticValidation(self, request: Request):
         pass
 
     def validate(self, req: Request):
@@ -120,30 +120,34 @@ class DomainRequestHandler(RequestHandler):
         self.state.set(key, val)
         return existingData
 
-    def hasNym(self, nym, isCommitted: bool = True):
+    def hasNym(self, nym, isCommitted: bool=True):
         key = self.nym_to_state_key(nym)
         data = self.state.get(key, isCommitted)
         return bool(data)
 
     @staticmethod
-    def getSteward(state, nym, isCommitted: bool = True):
+    def get_role(state, nym, role, isCommitted: bool=True):
         nymData = DomainRequestHandler.getNymDetails(state, nym, isCommitted)
         if not nymData:
             return {}
         else:
-            if nymData.get(ROLE) == STEWARD:
+            if nymData.get(ROLE) == role:
                 return nymData
             else:
                 return {}
 
     @staticmethod
-    def isSteward(state, nym, isCommitted: bool = True):
+    def getSteward(state, nym, isCommitted: bool=True):
+        return DomainRequestHandler.get_role(state, nym, STEWARD, isCommitted)
+
+    @staticmethod
+    def isSteward(state, nym, isCommitted: bool=True):
         return bool(DomainRequestHandler.getSteward(state,
                                                     nym,
                                                     isCommitted))
 
     @staticmethod
-    def getNymDetails(state, nym, isCommitted: bool = True):
+    def getNymDetails(state, nym, isCommitted: bool=True):
         key = DomainRequestHandler.nym_to_state_key(nym)
         data = state.get(key, isCommitted)
         if not data:

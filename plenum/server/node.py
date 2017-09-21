@@ -2,7 +2,7 @@ import json
 import os
 import time
 from binascii import unhexlify
-from collections import deque, defaultdict
+from collections import deque
 from contextlib import closing
 from functools import partial
 from typing import Dict, Any, Mapping, Iterable, List, Optional, Set, Tuple, Callable
@@ -141,8 +141,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         self.reqProcessors = self.getPluginsByType(pluginPaths,
                                                    PLUGIN_TYPE_PROCESSING)
 
-        self.req_handlers = {}  # type: Dict[int, RequestHandler]
-        self.req_handler_txn_map = {}  # type: Dict[str, RequestHandler]
+        self.ledger_to_req_handler = {}  # type: Dict[int, RequestHandler]
+        self.txn_type_to_req_handler = {}  # type: Dict[str, RequestHandler]
         self.txn_type_to_ledger_id = {}  # type: Dict[str, int]
         self.requestExecuter = {}   # type: Dict[int, Callable]
 
@@ -588,33 +588,22 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         self.replicas.register_new_ledger(ledger_id)
 
     def register_req_handler(self, ledger_id: int, req_handler: RequestHandler):
-        self.req_handlers[ledger_id] = req_handler
+        self.ledger_to_req_handler[ledger_id] = req_handler
         for txn_type in req_handler.valid_txn_types:
-            if txn_type in self.req_handler_txn_map:
+            if txn_type in self.txn_type_to_req_handler:
                 raise ValueError('{} already registered for {}'
-                                 .format(txn_type, self.req_handler_txn_map[txn_type]))
-            self.req_handler_txn_map[txn_type] = req_handler
+                                 .format(txn_type, self.txn_type_to_req_handler[txn_type]))
+            self.txn_type_to_req_handler[txn_type] = req_handler
             self.txn_type_to_ledger_id[txn_type] = ledger_id
-
-        # self.update_input_validators(ledger_id, req_handler)
-
-    # def update_input_validators(self, ledger_id: int, req_handler: RequestHandler):
-    #     from plenum.common.messages.fields import LedgerIdField
-    #     self._add_new_ledger_id(ledger_id, LedgerIdField)
-    #
-    # @staticmethod
-    # def _add_new_ledger_id(ledger_id, field):
-    #     if ledger_id not in field.ledger_ids:
-    #         field.ledger_ids += (ledger_id, )
 
     def register_executer(self, ledger_id: int, executer: Callable):
         self.requestExecuter[ledger_id] = executer
 
     def get_req_handler(self, ledger_id=None, txn_type=None) -> Optional[RequestHandler]:
         if ledger_id:
-            return self.req_handlers.get(ledger_id)
+            return self.ledger_to_req_handler.get(ledger_id)
         if txn_type:
-            return self.req_handler_txn_map.get(txn_type)
+            return self.txn_type_to_req_handler.get(txn_type)
 
     def get_executer(self, ledger_id):
         executer = self.requestExecuter.get(ledger_id)
@@ -1353,7 +1342,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         reason = self.reasonForClientFromException(ex)
         if isinstance(msg, Request):
             msg = msg.__getstate__()
-        identifier = msg.get(f.IDENTIFIER.nm)
+        identifier = self.idr_from_req_data(msg)
         reqId = msg.get(f.REQ_ID.nm)
         if not reqId:
             reqId = getattr(exc, f.REQ_ID.nm, None)
@@ -1398,9 +1387,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                                        msg.get(f.REQ_ID.nm)) from ex
 
         if needStaticValidation:
-            self.doStaticValidation(msg[f.IDENTIFIER.nm],
-                                    msg[f.REQ_ID.nm],
-                                    msg[OPERATION])
+            self.doStaticValidation(cMsg)
 
         if self.isSignatureVerificationNeeded(msg):
             self.verifySignature(cMsg)
@@ -1683,26 +1670,27 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             logger.debug("{} not sending ledger {} status to {} as it is null"
                          .format(self, ledgerId, nodeName))
 
-    def doStaticValidation(self, identifier, reqId, operation):
+    def doStaticValidation(self, request: Request):
+        identifier, req_id, operation = request.identifier, request.reqId, request.operation
         if TXN_TYPE not in operation:
-            raise InvalidClientRequest(identifier, reqId)
+            raise InvalidClientRequest(identifier, req_id)
 
         # if operation.get(TXN_TYPE) in POOL_TXN_TYPES:
         #     self.poolManager.doStaticValidation(identifier, reqId, operation)
 
         req_handler = self.get_req_handler(txn_type=operation[TXN_TYPE])
         if not req_handler:
-            raise InvalidClientRequest(identifier, reqId, 'invalid {}: {}'.
+            raise InvalidClientRequest(identifier, req_id, 'invalid {}: {}'.
                                        format(TXN_TYPE, operation[TXN_TYPE]))
         else:
-            req_handler.doStaticValidation(identifier, reqId, operation)
+            req_handler.doStaticValidation(request)
 
         if self.opVerifiers:
             try:
                 for v in self.opVerifiers:
                     v.verify(operation)
             except Exception as ex:
-                raise InvalidClientRequest(identifier, reqId) from ex
+                raise InvalidClientRequest(identifier, req_id) from ex
 
     def doDynamicValidation(self, request: Request):
         """
@@ -1724,17 +1712,6 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         """
         req_handler = self.get_req_handler(txn_type=request.operation[TXN_TYPE])
         req_handler.apply(request, cons_time)
-
-        # if self.ledgerIdForRequest(request) == POOL_LEDGER_ID:
-        #     return self.poolManager.applyReq(request, cons_time)
-        # else:
-        #     return self.domainRequestApplication(request, cons_time)
-
-    # def domainDynamicValidation(self, request: Request):
-    #     self.reqHandler.validate(request, self.config)
-
-    # def domainRequestApplication(self, request: Request, cons_time: int):
-    #     return self.reqHandler.apply(request, cons_time)
 
     def processRequest(self, request: Request, frm: str):
         """
@@ -2325,14 +2302,14 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                              format(self, old))
 
     @staticmethod
-    def idr_from_txn(txn):
-        if txn[f.IDENTIFIER.nm]:
+    def idr_from_req_data(txn):
+        if txn.get(f.IDENTIFIER.nm):
             return txn[f.IDENTIFIER.nm]
         else:
-            return Request.gen_idr_from_sigs(txn[f.SIGS.nm])
+            return Request.gen_idr_from_sigs(txn.get(f.SIGS.nm, {}))
 
     def updateSeqNoMap(self, committedTxns):
-        self.seqNoDB.addBatch((self.idr_from_txn(txn), txn[f.REQ_ID.nm],
+        self.seqNoDB.addBatch((self.idr_from_req_data(txn), txn[f.REQ_ID.nm],
                                txn[F.seqNo.name]) for txn in committedTxns)
 
     def commitAndSendReplies(self, reqHandler, ppTime, reqs: List[Request],
@@ -2390,10 +2367,6 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         else:
             logger.debug('{} did not know how to handle for ledger {}'.
                          format(self, ledger_id))
-
-    # @classmethod
-    # def ledgerId(cls, txnType: str):
-    #     return POOL_LEDGER_ID if txnType in POOL_TXN_TYPES else DOMAIN_LEDGER_ID
 
     def sendRepliesToClients(self, committedTxns, ppTime):
         for txn in committedTxns:
@@ -2466,9 +2439,6 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
     def defaultAuthNr(self) -> ReqAuthenticator:
         req_authnr = ReqAuthenticator()
         req_authnr.register_authenticator(self.init_core_authenticator())
-        # for authnr in self.req_authenticators:
-        #     req_authnr.register_authenticator(authnr)
-        # TODO: For each plugin, register the authenticator
         return req_authnr
 
     def processStashedOrderedReqs(self):

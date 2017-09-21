@@ -23,7 +23,7 @@ class RequestHandler:
         self.ledger = ledger
         self.state = state
 
-    def doStaticValidation(self, identifier, reqId, operation):
+    def doStaticValidation(self, request: Request):
         """
         Does static validation like presence of required fields,
         properly formed request, etc

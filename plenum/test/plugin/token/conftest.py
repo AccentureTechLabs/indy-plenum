@@ -12,6 +12,15 @@ from plenum.test.plugin.helper import getPluginPath
 from plenum.test.test_node import TestNode
 
 
+def build_wallets_from_data(name_seeds):
+    wallets = []
+    for name, seed in name_seeds:
+        w = Wallet(name)
+        w.addIdentifier(seed=seed.encode())
+        wallets.append(w)
+    return wallets
+
+
 @pytest.fixture(scope="module")
 def SF_token_wallet():
     return TokenWallet('SF_MASTER')
@@ -39,12 +48,7 @@ def seller_address(seller_token_wallet):
 
 @pytest.fixture(scope="module")
 def trustee_wallets(trustee_data):
-    wallets = []
-    for name, seed in trustee_data:
-        w = Wallet(name)
-        w.addIdentifier(seed=seed.encode())
-        wallets.append(w)
-    return wallets
+    return build_wallets_from_data(trustee_data)
 
 
 @pytest.fixture(scope="module")
@@ -61,3 +65,4 @@ def testNodeClass(patchPluginManager):
 def txnPoolNodeSet(txnPoolNodeSet):
     for node in txnPoolNodeSet:
         update_node_obj(node)
+    return txnPoolNodeSet

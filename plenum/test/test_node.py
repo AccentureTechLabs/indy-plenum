@@ -243,7 +243,7 @@ class TestNodeCore(StackedTester):
     def getDomainReqHandler(self):
         return TestDomainRequestHandler(self.domainLedger,
                                         self.states[DOMAIN_LEDGER_ID],
-                                        self.reqProcessors, self.config)
+                                        self.config, self.reqProcessors)
 
     def init_core_authenticator(self):
         state = self.getState(DOMAIN_LEDGER_ID)
@@ -293,7 +293,6 @@ node_spyables = [Node.handleOneNodeMsg,
 
 @spyable(methods=node_spyables)
 class TestNode(TestNodeCore, Node):
-
     def __init__(self, *args, **kwargs):
         self.NodeStackClass = nodeStackClass
         self.ClientStackClass = clientStackClass

@@ -188,7 +188,7 @@ class Wallet:
         :return: signed request
         """
 
-        idr = self.requiredIdr(idr=identifier or req.identifier)
+        idr = self.requiredIdr(idr=identifier or req._identifier)
         # idData = self._getIdData(idr)
         req._identifier = idr
         req.reqId = req.gen_req_id()
