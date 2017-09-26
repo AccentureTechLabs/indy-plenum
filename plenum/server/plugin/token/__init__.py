@@ -3,5 +3,7 @@ from plenum.server.plugin.token.transactions import TokenTransactions
 
 
 LEDGER_IDS = {TOKEN_LEDGER_ID, }
-AcceptableTxnTypes = {TokenTransactions.MINT_PUBLIC.value,
-                      TokenTransactions.XFER.value}
+AcceptableWriteTypes = {TokenTransactions.MINT_PUBLIC.value,
+                        TokenTransactions.XFER.value}
+
+AcceptableQueryTypes = {TokenTransactions.GET_UTXO.value, }

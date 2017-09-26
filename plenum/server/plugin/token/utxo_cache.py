@@ -55,12 +55,12 @@ class UTXOCache(OptimisticKVStore):
         if seq_no_str not in seq_nos:
             raise KeyError('{} not in {}'.format(seq_no_str, seq_nos))
         seq_nos.remove(seq_no_str)
-        batch = [(self._store.REMOVE_OP, type1_key, None)]
-        if seq_nos:
-            type2_val = self._create_type2_val(seq_nos)
-            batch.append((self._store.WRITE_OP, type2_key, type2_val))
-        else:
-            batch.append((self._store.REMOVE_OP, type2_key, None))
+        batch = [(self._store.WRITE_OP, type1_key, '')]
+        # if seq_nos:
+        type2_val = self._create_type2_val(seq_nos)
+        batch.append((self._store.WRITE_OP, type2_key, type2_val))
+        # else:
+        #     batch.append((self._store.REMOVE_OP, type2_key, None))
         self.do_ops_in_batch(batch, is_committed=is_committed)
 
     def get_unspent_outputs(self, address: str,
@@ -93,4 +93,4 @@ class UTXOCache(OptimisticKVStore):
 
     @staticmethod
     def _parse_type2_val(seq_nos: str) -> List:
-        return seq_nos.split(':')
+        return [] if not seq_nos else seq_nos.split(':')

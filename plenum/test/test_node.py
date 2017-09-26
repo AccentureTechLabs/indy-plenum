@@ -52,7 +52,7 @@ logger = getlogger()
 
 
 class TestCoreAuthnr(CoreAuthNr):
-    acceptable_txn_types = CoreAuthNr.acceptable_txn_types.union({'buy', })
+    write_types = CoreAuthNr.write_types.union({'buy', })
 
 
 class TestDomainRequestHandler(DomainRequestHandler):

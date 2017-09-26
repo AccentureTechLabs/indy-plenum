@@ -30,7 +30,7 @@ def SF_token_wallet():
 def SF_address(SF_token_wallet):
     seed = 'sf000000000000000000000000000000'.encode()
     SF_token_wallet.add_new_address(seed=seed)
-    return SF_token_wallet.addresses[0].address
+    return next(iter(SF_token_wallet.addresses.keys()))
 
 
 @pytest.fixture(scope="module")
@@ -43,7 +43,7 @@ def seller_address(seller_token_wallet):
     # Token selling/buying platform's address
     seed = 'se000000000000000000000000000000'.encode()
     seller_token_wallet.add_new_address(seed=seed)
-    return seller_token_wallet.addresses[0].address
+    return next(iter(seller_token_wallet.addresses.keys()))
 
 
 @pytest.fixture(scope="module")

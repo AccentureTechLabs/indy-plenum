@@ -30,6 +30,7 @@ from plenum.common.startable import Status, Mode
 from plenum.common.constants import REPLY, POOL_LEDGER_TXNS, \
     LEDGER_STATUS, CONSISTENCY_PROOF, CATCHUP_REP, REQACK, REQNACK, REJECT, \
     OP_FIELD_NAME, POOL_LEDGER_ID, LedgerState
+from plenum.common.txn_util import idr_from_req_data
 from plenum.common.types import f
 from plenum.common.util import getMaxFailures, checkIfMoreThanFSameItems, rawToFriendly
 from plenum.persistence.client_req_rep_store_file import ClientReqRepStoreFile
@@ -378,7 +379,7 @@ class Client(Motor,
         return {frm: msg for msg, frm in self.inBox
                 if msg[OP_FIELD_NAME] == REPLY and
                 msg[f.RESULT.nm][f.REQ_ID.nm] == reqId and
-                msg[f.RESULT.nm][f.IDENTIFIER.nm] == identifier}
+                idr_from_req_data(msg[f.RESULT.nm]) == identifier}
 
     def hasConsensus(self, identifier: str, reqId: int) -> Optional[str]:
         """

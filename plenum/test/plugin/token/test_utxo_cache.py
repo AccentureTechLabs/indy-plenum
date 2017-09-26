@@ -27,9 +27,9 @@ def test_add_unspent_output(utxo_cache):
     outputs = gen_outputs(num_outputs)
     for i in range(num_outputs):
         with pytest.raises(KeyError):
-            utxo_cache.get_output(outputs[i])
-        utxo_cache.add_output(outputs[i])
-        out = utxo_cache.get_output(outputs[i])
+            utxo_cache.get_output(outputs[i], True)
+        utxo_cache.add_output(outputs[i], True)
+        out = utxo_cache.get_output(outputs[i], True)
         assert out.value == outputs[i].value
 
 
@@ -37,14 +37,14 @@ def test_spend_unspent_output(utxo_cache):
     num_outputs = 5
     outputs = gen_outputs(num_outputs)
     for i in range(num_outputs):
-        utxo_cache.add_output(outputs[i])
+        utxo_cache.add_output(outputs[i], True)
         new_out = Output(outputs[i].address, outputs[i].seq_no, None)
-        utxo_cache.get_output(new_out)
-        utxo_cache.spend_output(new_out)
+        utxo_cache.get_output(new_out, True)
+        utxo_cache.spend_output(new_out, True)
         with pytest.raises(KeyError):
-            utxo_cache.get_output(new_out)
+            utxo_cache.get_output(new_out, True)
         with pytest.raises(KeyError):
-            utxo_cache.spend_output(new_out)
+            utxo_cache.spend_output(new_out, True)
 
 
 def test_get_all_unspent_outputs(utxo_cache):
@@ -60,13 +60,13 @@ def test_get_all_unspent_outputs(utxo_cache):
         outputs_by_address[out.address].add(out)
 
     for o in all_outputs:
-        utxo_cache.add_output(o)
+        utxo_cache.add_output(o, True)
 
     for addr in outputs_by_address:
-        assert set(utxo_cache.get_unspent_outputs(addr)) == outputs_by_address[addr]
+        assert set(utxo_cache.get_unspent_outputs(addr, True)) == outputs_by_address[addr]
 
     for addr, outs in outputs_by_address.items():
         while outs:
             out = outs.pop()
-            utxo_cache.spend_output(out)
-            assert set(utxo_cache.get_unspent_outputs(addr)) == outs
+            utxo_cache.spend_output(out, True)
+            assert set(utxo_cache.get_unspent_outputs(addr, True)) == outs

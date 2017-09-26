@@ -212,7 +212,7 @@ class CoreAuthNr(SimpleAuthNr):
     # TODO: This should know a list of valid fields rather than excluding
     # hardcoded fields
     excluded_from_signing = {f.SIG.nm, f.FEES.nm, f.SIGS.nm}
-    acceptable_txn_types = {NODE, NYM}
+    write_types = {NODE, NYM}
     query_types = {GET_TXN, }
 
     def __init__(self, state=None):
@@ -224,7 +224,7 @@ class CoreAuthNr(SimpleAuthNr):
 
     @classmethod
     def is_write(cls, typ):
-        return typ in cls.acceptable_txn_types
+        return typ in cls.write_types
 
     @staticmethod
     def _extract_signature(msg):
@@ -243,13 +243,14 @@ class CoreAuthNr(SimpleAuthNr):
         return msg[f.IDENTIFIER.nm]
 
     def authenticate(self, req_data, identifier: str=None,
-                     signature: str=None):
+                     signature: str=None, verifier: Verifier=DidVerifier):
         """
         Prepares the data to be serialised for signing and then verifies the
         signature
         :param req_data:
         :param identifier:
         :param signature:
+        :param verifier:
         :return:
         """
         to_serialize = {k: v for k, v in req_data.items()
@@ -271,7 +272,7 @@ class CoreAuthNr(SimpleAuthNr):
         else:
             signatures = req_data[f.SIGS.nm]
         return self.authenticate_multi(to_serialize,
-                                       signatures=signatures)
+                                       signatures=signatures, verifier=verifier)
 
     def serializeForSig(self, msg, identifier=None, topLevelKeysToIgnore=None):
         if not msg.get(f.IDENTIFIER.nm):

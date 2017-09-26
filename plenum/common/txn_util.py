@@ -95,3 +95,10 @@ def txnToReq(txn):
         request[field_name] = txn.pop(field_name, None)
     request[OPERATION] = txn
     return request
+
+
+def idr_from_req_data(data):
+    if data.get(f.IDENTIFIER.nm):
+        return data[f.IDENTIFIER.nm]
+    else:
+        return Request.gen_idr_from_sigs(data.get(f.SIGS.nm, {}))

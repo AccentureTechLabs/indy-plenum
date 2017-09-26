@@ -14,3 +14,4 @@ class TokenTransactions(Transactions):
     # prefix is used
     MINT_PUBLIC = PREFIX + '0'
     XFER = PREFIX + '1'
+    GET_UTXO = PREFIX + '2'

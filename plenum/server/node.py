@@ -45,6 +45,7 @@ from plenum.common.signer_simple import SimpleSigner
 from plenum.common.stacks import nodeStackClass, clientStackClass
 from plenum.common.startable import Status, Mode
 from plenum.common.throttler import Throttler
+from plenum.common.txn_util import idr_from_req_data
 from plenum.common.types import PLUGIN_TYPE_VERIFICATION, \
     PLUGIN_TYPE_PROCESSING, OPERATION, f, PLUGIN_TYPE_AUTHENTICATOR
 from plenum.common.util import friendlyEx, getMaxFailures, pop_keys, \
@@ -1342,13 +1343,14 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         reason = self.reasonForClientFromException(ex)
         if isinstance(msg, Request):
             msg = msg.__getstate__()
-        identifier = self.idr_from_req_data(msg)
+        identifier = idr_from_req_data(msg)
         reqId = msg.get(f.REQ_ID.nm)
         if not reqId:
             reqId = getattr(exc, f.REQ_ID.nm, None)
             if not reqId:
                 reqId = getattr(ex, f.REQ_ID.nm, None)
-        self.transmitToClient(RequestNack(identifier, reqId, reason), frm)
+        # self.transmitToClient(RequestNack(identifier, reqId, reason), frm)
+        self.send_nack_to_client((identifier, reqId), reason, frm)
         self.discard(wrappedMsg, friendly, logger.debug, cliOutput=True)
 
     def validateClientMsg(self, wrappedMsg):
@@ -1753,12 +1755,29 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                              "REQUEST: {}".format(self, request))
                 self.transmitToClient(reply, frm)
             else:
-                if not self.isProcessingReq(*request.key):
-                    self.startedProcessingReq(*request.key, frm)
-                # If not already got the propagate request(PROPAGATE) for the
-                # corresponding client request(REQUEST)
-                self.recordAndPropagate(request, frm)
-                self.send_ack_to_client(request.key, frm)
+                if self.is_query(request.operation[TXN_TYPE]):
+                    self.process_query(request, frm)
+                else:
+                    if not self.isProcessingReq(*request.key):
+                        self.startedProcessingReq(*request.key, frm)
+                    # If not already got the propagate request(PROPAGATE) for the
+                    # corresponding client request(REQUEST)
+                    self.recordAndPropagate(request, frm)
+                    self.send_ack_to_client(request.key, frm)
+
+    def is_query(self, txn_type):
+        handler = self.get_req_handler(txn_type=txn_type)
+        return handler and handler.is_query(txn_type)
+
+    def process_query(self, request: Request, frm: str):
+        handler = self.get_req_handler(txn_type=request.operation[TXN_TYPE])
+        try:
+            handler.doStaticValidation(request)
+            self.send_ack_to_client(request.key, frm)
+        except Exception as ex:
+            self.send_nack_to_client(request.key, str(ex), frm)
+        result = handler.get_query_response(request)
+        self.transmitToClient(Reply(result), frm)
 
     # noinspection PyUnusedLocal
     def processPropagate(self, msg: Propagate, frm):
@@ -1808,6 +1827,9 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
 
     def send_ack_to_client(self, req_key, to_client):
         self.transmitToClient(RequestAck(*req_key), to_client)
+
+    def send_nack_to_client(self, req_key, reason, to_client):
+        self.transmitToClient(RequestNack(*req_key, reason), to_client)
 
     def handle_get_txn_req(self, request: Request, frm: str):
         """
@@ -2301,15 +2323,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                 logger.debug('{} popped {} from txn to batch seqNo map'.
                              format(self, old))
 
-    @staticmethod
-    def idr_from_req_data(txn):
-        if txn.get(f.IDENTIFIER.nm):
-            return txn[f.IDENTIFIER.nm]
-        else:
-            return Request.gen_idr_from_sigs(txn.get(f.SIGS.nm, {}))
-
     def updateSeqNoMap(self, committedTxns):
-        self.seqNoDB.addBatch((self.idr_from_req_data(txn), txn[f.REQ_ID.nm],
+        self.seqNoDB.addBatch((idr_from_req_data(txn), txn[f.REQ_ID.nm],
                                txn[F.seqNo.name]) for txn in committedTxns)
 
     def commitAndSendReplies(self, reqHandler, ppTime, reqs: List[Request],
@@ -2372,7 +2387,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         for txn in committedTxns:
             # TODO: Send txn and state proof to the client
             txn[TXN_TIME] = ppTime
-            self.sendReplyToClient(Reply(txn), (txn[f.IDENTIFIER.nm],
+            self.sendReplyToClient(Reply(txn), (idr_from_req_data(txn),
                                                 txn[f.REQ_ID.nm]))
 
     def sendReplyToClient(self, reply, reqKey):

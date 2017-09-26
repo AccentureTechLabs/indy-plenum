@@ -21,15 +21,15 @@ class PublicAmountField(FieldBase):
 class PublicOutputField(FieldBase):
     _base_types = (list, tuple)
     _length = 2
-    _public_address_field = PublicAddressField()
-    _public_amount_field = PublicAmountField()
+    public_address_field = PublicAddressField()
+    public_amount_field = PublicAmountField()
 
     def _specific_validation(self, val):
         if len(val) != self._length:
             return "should have length {}".format(self._length)
-        addr_error = self._public_address_field.validate(val[0])
+        addr_error = self.public_address_field.validate(val[0])
         if addr_error:
             return addr_error
-        amt_error = self._public_amount_field.validate(val[1])
+        amt_error = self.public_amount_field.validate(val[1])
         if amt_error:
             return amt_error

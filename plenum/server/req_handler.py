@@ -18,6 +18,8 @@ class RequestHandler:
     Declares methods for validation, application of requests and
     state control
     """
+    valid_txn_types = {}
+    query_types = {}
 
     def __init__(self, ledger: Ledger, state: State):
         self.ledger = ledger
@@ -70,3 +72,9 @@ class RequestHandler:
 
     def onBatchRejected(self):
         pass
+
+    def is_query(self, txn_type):
+        return txn_type in self.query_types
+
+    def get_query_response(self, request):
+        raise NotImplementedError
