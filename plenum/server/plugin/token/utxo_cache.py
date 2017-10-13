@@ -42,6 +42,8 @@ class UTXOCache(OptimisticKVStore):
     def get_output(self, output: Output, is_committed=False) -> Output:
         type1_key = self._create_type1_key(output)
         val = self.get(type1_key, is_committed)
+        if not val:
+            raise KeyError(type1_key)
         return Output(output.address, output.seq_no, float(val))
 
     def spend_output(self, output: Output, is_committed=False):
