@@ -8,7 +8,7 @@ from state.pruning_state import PruningState
 
 def get_token_hash_store(data_dir):
     return LevelDbHashStore(dataDir=data_dir,
-                            fileNamePrefix='config')
+                            fileNamePrefix='token')
 
 
 def get_token_ledger(data_dir, name, hash_store, config):

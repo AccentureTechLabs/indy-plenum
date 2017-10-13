@@ -12,26 +12,29 @@ from plenum.common.txn_util import reqToTxn
 from plenum.common.types import f
 from plenum.persistence.util import txnsWithSeqNo
 from plenum.server.domain_req_handler import DomainRequestHandler
-from plenum.server.plugin.token.constants import XFER, MINT_PUBLIC, OUTPUTS, \
+from plenum.server.plugin.token.constants import XFER_PUBLIC, MINT_PUBLIC, OUTPUTS, \
     INPUTS, GET_UTXO, ADDRESS
-from plenum.server.plugin.token.messages.fields import PublicOutputField
+from plenum.server.plugin.token.messages.fields import PublicOutputField, \
+    PublicInputField, PublicInputsField, PublicOutputsField
 from plenum.server.plugin.token.types import Output
 from plenum.server.plugin.token.utxo_cache import UTXOCache
 from plenum.server.req_handler import RequestHandler
 
 
 class TokenReqHandler(RequestHandler):
-    valid_txn_types = {MINT_PUBLIC, XFER, GET_UTXO}
+    valid_txn_types = {MINT_PUBLIC, XFER_PUBLIC, GET_UTXO}
     query_types = {GET_UTXO, }
     _public_output_validator = IterableField(PublicOutputField())
+    _public_outputs_validator = PublicOutputsField()
+    # _public_input_validator = IterableField(PublicInputField())
+    _public_inputs_validator = PublicInputsField()
     MinSendersForPublicMint = 4
 
-    def __init__(self, ledger, state,
-                 utxo_cache: UTXOCache,
-                 domain_state):
+    def __init__(self, ledger, state, utxo_cache: UTXOCache, domain_state):
         super().__init__(ledger, state)
         self.utxo_cache = utxo_cache
         self.domain_state = domain_state
+
         self.query_handlers = {
             GET_UTXO: self.get_all_utxo,
         }
@@ -39,12 +42,23 @@ class TokenReqHandler(RequestHandler):
     def doStaticValidation(self, request: Request):
         operation = request.operation
         error = ''
-        if operation[TXN_TYPE] in (MINT_PUBLIC, XFER):
+        if operation[TXN_TYPE] in (MINT_PUBLIC, XFER_PUBLIC):
             if OUTPUTS not in operation:
                 raise InvalidClientRequest(request.identifier, request.reqId,
                                            "{} needs to be present".
                                            format(OUTPUTS))
-            error = self._validate_output(operation[OUTPUTS])
+            # error = self._validate_output(operation[OUTPUTS])
+            error = self._public_outputs_validator.validate(operation[OUTPUTS])
+            if not error:
+                if operation[TXN_TYPE] == XFER_PUBLIC:
+                    if INPUTS not in operation:
+                        raise InvalidClientRequest(request.identifier,
+                                                   request.reqId,
+                                                   "{} needs to be present".
+                                                   format(INPUTS))
+                    # TODO: validate for input repetition
+                    error = self._public_inputs_validator.validate(
+                        operation[INPUTS])
 
         if operation[TXN_TYPE] == GET_UTXO:
             if ADDRESS not in operation:
@@ -68,7 +82,7 @@ class TokenReqHandler(RequestHandler):
                 error = 'Need at least {} but only {} found'.\
                     format(self.MinSendersForPublicMint, len(senders))
 
-        if operation[TXN_TYPE] == XFER:
+        if operation[TXN_TYPE] == XFER_PUBLIC:
             try:
                 sum_inputs = self._sum_inputs(operation[INPUTS],
                                               is_committed=False)
@@ -108,7 +122,7 @@ class TokenReqHandler(RequestHandler):
             for addr, amount in txn[OUTPUTS]:
                 self._add_new_output(Output(addr, txn[F.seqNo.name], amount),
                                      is_committed=is_committed)
-        if txn[TXN_TYPE] == XFER:
+        if txn[TXN_TYPE] == XFER_PUBLIC:
             for addr, seq_no in txn[INPUTS]:
                 self._spend_input(addr, seq_no, is_committed=is_committed)
             for addr, amount in txn[OUTPUTS]:
@@ -152,12 +166,19 @@ class TokenReqHandler(RequestHandler):
         result.update(request.operation)
         return result
 
-    def _validate_output(self, outputs: List[Tuple]):
-        # Each output is valid and each output contains unique address
-        error = self._public_output_validator.validate(outputs)
-        if not error and (len(outputs) != len({out[0] for out in outputs})):
-            error = 'Each output should contain unique address'
-        return error
+    # def _validate_output(self, outputs: List[Tuple]):
+    #     # Each output is valid and each output contains unique address
+    #     error = self._public_output_validator.validate(outputs)
+    #     if not error and (len(outputs) != len({out[0] for out in outputs})):
+    #         error = 'Each output should contain unique address'
+    #     return error
+    #
+    # def _validate_input(self, inputs: List[Tuple]):
+    #     # Each input is valid and each input contains unique address+seq_no
+    #     error = self._public_input_validator.validate(inputs)
+    #     if not error and (len(inputs) != len({(inp[0], inp[1]) for inp in inputs})):
+    #         error = 'Each input should be unique'
+    #     return error
 
     def _sum_inputs(self, inputs: Iterable, is_committed=False) -> float:
         return sum([self.utxo_cache.get_output(

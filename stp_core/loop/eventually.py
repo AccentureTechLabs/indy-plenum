@@ -11,7 +11,7 @@ from stp_core.common.util import get_func_name, get_func_args
 from stp_core.loop.exceptions import EventuallyTimeoutException
 from stp_core.ratchet import Ratchet
 
-# TODO: move it to plenum-util repo
+# TODO: move it to plenum-util.py repo
 
 T = TypeVar('T')
 

@@ -4,7 +4,7 @@ from stp_core.loop.startable import Status
 
 logger = getlogger()
 
-# TODO: move it to plenum-util repo
+# TODO: move it to plenum-util.py repo
 
 
 class Motor(Prodable):

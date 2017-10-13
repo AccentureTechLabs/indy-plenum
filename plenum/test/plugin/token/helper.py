@@ -1,6 +1,6 @@
 from plenum.common.constants import TXN_TYPE
 from plenum.common.types import f
-from plenum.server.plugin.token.constants import MINT_PUBLIC, OUTPUTS, XFER, \
+from plenum.server.plugin.token.constants import MINT_PUBLIC, OUTPUTS, XFER_PUBLIC, \
     EXTRA, INPUTS, TOKEN_LEDGER_ID, GET_UTXO, ADDRESS
 from plenum.test.helper import waitForSufficientRepliesForRequests
 
@@ -39,7 +39,7 @@ def do_public_minting(looper, trustees, sender_client, total_mint,
 
 def xfer_request(inputs, outputs, sender_client, extra_data=None):
     payload = {
-        TXN_TYPE: XFER,
+        TXN_TYPE: XFER_PUBLIC,
         OUTPUTS: outputs,
         EXTRA: extra_data,
     }

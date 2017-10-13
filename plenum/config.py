@@ -32,14 +32,16 @@ clientDataDir = 'data/clients'
 
 pool_transactions_file_base = 'pool_transactions'
 domain_transactions_file_base = 'domain_transactions'
+config_transactions_file_base = 'config_transactions'
 genesis_file_suffix = '_genesis'
 
 poolTransactionsFile = pool_transactions_file_base
 domainTransactionsFile = domain_transactions_file_base
-
+configTransactionsFile = config_transactions_file_base
 
 poolStateDbName = 'pool_state'
 domainStateDbName = 'domain_state'
+configStateDbName = 'config_state'
 
 # There is only one seqNoDB as it maintain the mapping of
 # request id to sequence numbers
@@ -55,6 +57,7 @@ primaryStorage = None
 
 domainStateStorage = KeyValueStorageType.Leveldb
 poolStateStorage = KeyValueStorageType.Leveldb
+configStateStorage = KeyValueStorageType.Leveldb
 reqIdToTxnStorage = KeyValueStorageType.Leveldb
 
 DefaultPluginPath = {
@@ -202,4 +205,4 @@ WALLET_FILE_MODE = 0o600  # -rw-------
 # having finalised requests.
 ACCEPTABLE_DEVIATION_PREPREPARE_SECS = 600  # seconds
 
-ENABLED_PLUGINS = {'token', }
+ENABLED_PLUGINS = ['token', 'fees']

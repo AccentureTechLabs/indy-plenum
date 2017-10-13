@@ -17,11 +17,18 @@ from ledger.hash_stores.memory_hash_store import MemoryHashStore
 from ledger.util import F
 from plenum.client.wallet import Wallet
 from plenum.common.config_util import getConfig
-from plenum.common.constants import openTxns, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, CLIENT_BLACKLISTER_SUFFIX, \
-    NODE_BLACKLISTER_SUFFIX, NODE_PRIMARY_STORAGE_SUFFIX, HS_FILE, HS_LEVELDB, TXN_TYPE, LedgerState, LEDGER_STATUS, \
-    CLIENT_STACK_SUFFIX, PRIMARY_SELECTION_PREFIX, VIEW_CHANGE_PREFIX, OP_FIELD_NAME, CATCH_UP_PREFIX, NYM, \
-    POOL_TXN_TYPES, GET_TXN, DATA, MONITORING_PREFIX, TXN_TIME, VERKEY, TARGET_NYM, ROLE, STEWARD, TRUSTEE, ALIAS, \
-    NODE_IP
+from plenum.common.constants import openTxns, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, \
+    CLIENT_BLACKLISTER_SUFFIX, \
+    NODE_BLACKLISTER_SUFFIX, NODE_PRIMARY_STORAGE_SUFFIX, HS_FILE, HS_LEVELDB, \
+    TXN_TYPE, LedgerState, LEDGER_STATUS, \
+    CLIENT_STACK_SUFFIX, PRIMARY_SELECTION_PREFIX, VIEW_CHANGE_PREFIX, \
+    OP_FIELD_NAME, CATCH_UP_PREFIX, NYM, \
+    POOL_TXN_TYPES, GET_TXN, DATA, MONITORING_PREFIX, TXN_TIME, VERKEY, \
+    TARGET_NYM, ROLE, STEWARD, TRUSTEE, ALIAS, \
+    NODE_IP, NODE_HOOKS, PRE_STATIC_VALIDATION, POST_STATIC_VALIDATION, \
+    PRE_DYNAMIC_VALIDATION, POST_DYNAMIC_VALIDATION, PRE_REQUEST_APPLICATION, \
+    POST_REQUEST_APPLICATION, PRE_REQUEST_COMMIT, POST_REQUEST_COMMIT, \
+    CONFIG_LEDGER_ID
 from plenum.common.exceptions import SuspiciousNode, SuspiciousClient, \
     MissingNodeOp, InvalidNodeOp, InvalidNodeMsg, InvalidClientMsgType, \
     InvalidClientRequest, BaseExc, \
@@ -57,6 +64,7 @@ from plenum.persistence.storage import Storage, initStorage, initKeyValueStorage
 from plenum.server.blacklister import Blacklister
 from plenum.server.blacklister import SimpleBlacklister
 from plenum.server.client_authn import ClientAuthNr, SimpleAuthNr, CoreAuthNr
+from plenum.server.config_req_handler import ConfigReqHandler
 from plenum.server.domain_req_handler import DomainRequestHandler
 from plenum.server.has_action_queue import HasActionQueue
 from plenum.server.instances import Instances
@@ -100,7 +108,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
     suspicions = {s.code: s.reason for s in Suspicions.get_list()}
     keygenScript = "init_plenum_keys"
     _client_request_class = SafeRequest
-    ledger_ids = [POOL_LEDGER_ID, DOMAIN_LEDGER_ID]
+    ledger_ids = [POOL_LEDGER_ID, DOMAIN_LEDGER_ID, CONFIG_LEDGER_ID]
     _wallet_class = Wallet
 
     def __init__(self,
@@ -188,6 +196,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         kwargs = dict(
             stackParams=self.poolManager.cstack,
             msgHandler=self.handleOneClientMsg,
+            # TODO, Reject is used when dynamic validation fails, use Reqnack
             msgRejectHandler=self.reject_client_msg_handler)
         cls = self.clientStackClass
         kwargs.update(seed=seed)
@@ -382,8 +391,82 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         # between.
         self._next_view_indications = SortedDict()
 
+        self.setup_config()
+
+        self.hooks = {}     # type: Dict[int, List[Callable]]
+        self.init_hooks()
+
     def create_replicas(self) -> Replicas:
         return Replicas(self, self.monitor)
+
+    def setup_config(self):
+        self.setup_config_ledger()
+        self.setup_config_state()
+        self.setup_config_req_handler()
+        self.initConfigState()
+
+    def setup_config_ledger(self):
+        self.configLedger = self.getConfigLedger()
+        self.ledgerManager.addLedger(
+            CONFIG_LEDGER_ID,
+            self.configLedger,
+            postCatchupCompleteClbk=self.postConfigLedgerCaughtUp,
+            postTxnAddedToLedgerClbk=self.postTxnFromCatchupAddedToLedger)
+        self.on_new_ledger_added(CONFIG_LEDGER_ID)
+
+    def setup_config_state(self):
+        self.states[CONFIG_LEDGER_ID] = self.loadConfigState()
+
+    def setup_config_req_handler(self):
+        self.configReqHandler = self.getConfigReqHandler()
+        self.register_req_handler(CONFIG_LEDGER_ID, self.configReqHandler)
+        # self.register_executer(CONFIG_LEDGER_ID, self.default_executer)
+
+    def getConfigLedger(self):
+        hashStore = LevelDbHashStore(
+            dataDir=self.dataLocation, fileNamePrefix='config')
+        return Ledger(CompactMerkleTree(hashStore=hashStore),
+                      dataDir=self.dataLocation,
+                      fileName=self.config.configTransactionsFile,
+                      ensureDurability=self.config.EnsureLedgerDurability)
+
+    def loadConfigState(self):
+        return PruningState(
+            initKeyValueStorage(
+                self.config.configStateStorage,
+                self.dataLocation,
+                self.config.configStateDbName)
+        )
+
+    def initConfigState(self):
+        self.initStateFromLedger(self.states[CONFIG_LEDGER_ID],
+                                 self.configLedger, self.configReqHandler)
+
+    def getConfigReqHandler(self):
+        return ConfigReqHandler(self.configLedger,
+                                self.states[CONFIG_LEDGER_ID])
+
+    def postConfigLedgerCaughtUp(self, **kwargs):
+        self.start_domain_ledger_sync()
+
+    def sendConfigLedgerStatus(self, nodeName):
+        self.sendLedgerStatus(nodeName, CONFIG_LEDGER_ID)
+
+    @property
+    def configLedgerStatus(self):
+        return self.build_ledger_status(CONFIG_LEDGER_ID)
+
+    def init_hooks(self):
+        for hook_id in NODE_HOOKS:
+            self.hooks[hook_id] = []
+
+    def register_hook(self, hook_id, hook: Callable):
+        assert hook_id in self.hooks
+        self.hooks[hook_id].append(hook)
+
+    def execute_hook(self, hook_id, *args, **kwargs):
+        for hook in self.hooks.get(hook_id, []):
+            hook(*args, **kwargs)
 
     def reject_client_msg_handler(self, reason, frm):
         self.transmitToClient(Reject("", "", reason), frm)
@@ -601,9 +684,9 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         self.requestExecuter[ledger_id] = executer
 
     def get_req_handler(self, ledger_id=None, txn_type=None) -> Optional[RequestHandler]:
-        if ledger_id:
+        if ledger_id is not None:
             return self.ledger_to_req_handler.get(ledger_id)
-        if txn_type:
+        if txn_type is not None:
             return self.txn_type_to_req_handler.get(txn_type)
 
     def get_executer(self, ledger_id):
@@ -653,7 +736,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             if isinstance(self.poolManager, RegistryPoolManager):
                 # Node not using pool ledger so start syncing domain ledger
                 self.mode = Mode.discovered
-                self.ledgerManager.setLedgerCanSync(DOMAIN_LEDGER_ID, True)
+                # self.ledgerManager.setLedgerCanSync(DOMAIN_LEDGER_ID, True)
+                self.ledgerManager.setLedgerCanSync(CONFIG_LEDGER_ID, True)
             else:
                 # Node using pool ledger so first sync pool ledger
                 self.mode = Mode.starting
@@ -685,7 +769,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
 
     @property
     def ledgers(self):
-        ledgers = [self.domainLedger]
+        ledgers = [self.configLedger, self.domainLedger]
         if self.poolLedger:
             ledgers.append(self.poolLedger)
         return ledgers
@@ -719,6 +803,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             self.ledgerManager.setLedgerState(POOL_LEDGER_ID,
                                               LedgerState.not_synced)
         self.ledgerManager.setLedgerState(DOMAIN_LEDGER_ID,
+                                          LedgerState.not_synced)
+        self.ledgerManager.setLedgerState(CONFIG_LEDGER_ID,
                                           LedgerState.not_synced)
 
     def closeAllKVStores(self):
@@ -881,7 +967,13 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         # verify the exact state of the ledger.
         # if self.mode in (Mode.discovered, Mode.participating):
         if Mode.is_done_discovering(self.mode):
-            self.sendDomainLedgerStatus(node_name)
+            self.sendConfigLedgerStatus(node_name)
+            # self.sendDomainLedgerStatus(node_name)
+            # If the domain ledger is already synced send config ledger status
+            # else after the domain ledger is caught up, config ledger status
+            # will be sent
+            # if self.ledgerManager.ledgerRegistry[DOMAIN_LEDGER_ID].state == LedgerState.synced:
+            #     self.sendConfigLedgerStatus(node_name)
 
     def newNodeJoined(self, txn):
         self.setF()
@@ -1476,7 +1568,12 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         self.catchup_next_ledger_after_pool()
 
     def catchup_next_ledger_after_pool(self):
-        self.start_domain_ledger_sync()
+        # self.start_domain_ledger_sync()
+        self.start_config_ledger_sync()
+
+    def start_config_ledger_sync(self):
+        self._sync_ledger(CONFIG_LEDGER_ID)
+        self.ledgerManager.processStashedLedgerStatuses(CONFIG_LEDGER_ID)
 
     def start_domain_ledger_sync(self):
         self._sync_ledger(DOMAIN_LEDGER_ID)
@@ -1528,6 +1625,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         if ledgerId == DOMAIN_LEDGER_ID:
             self.post_txn_from_catchup_added_to_domain_ledger(txn)
             rh = self.get_req_handler(DOMAIN_LEDGER_ID)
+        # no config ledger transactions are applied to the state
         return rh
 
     # TODO: should be renamed to `post_all_ledgers_caughtup`
@@ -1663,6 +1761,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             return self.poolLedgerStatus
         if ledgerId == DOMAIN_LEDGER_ID:
             return self.domainLedgerStatus
+        if ledgerId == CONFIG_LEDGER_ID:
+            return self.configLedgerStatus
 
     def sendLedgerStatus(self, nodeName: str, ledgerId: int):
         ledgerStatus = self.getLedgerStatus(ledgerId)
@@ -1672,6 +1772,9 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             logger.debug("{} not sending ledger {} status to {} as it is null"
                          .format(self, ledgerId, nodeName))
 
+    def pre_static_validation(self, request):
+        pass
+
     def doStaticValidation(self, request: Request):
         identifier, req_id, operation = request.identifier, request.reqId, request.operation
         if TXN_TYPE not in operation:
@@ -1680,6 +1783,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         # if operation.get(TXN_TYPE) in POOL_TXN_TYPES:
         #     self.poolManager.doStaticValidation(identifier, reqId, operation)
 
+        self.execute_hook(PRE_STATIC_VALIDATION, request=request)
         req_handler = self.get_req_handler(txn_type=operation[TXN_TYPE])
         if not req_handler:
             raise InvalidClientRequest(identifier, req_id, 'invalid {}: {}'.
@@ -1694,14 +1798,17 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             except Exception as ex:
                 raise InvalidClientRequest(identifier, req_id) from ex
 
+        self.execute_hook(POST_STATIC_VALIDATION, request=request)
+
     def doDynamicValidation(self, request: Request):
         """
         State based validation
         """
+        self.execute_hook(PRE_DYNAMIC_VALIDATION, request=request)
         operation = request.operation
         req_handler = self.get_req_handler(txn_type=operation[TXN_TYPE])
         req_handler.validate(request)
-
+        self.execute_hook(POST_DYNAMIC_VALIDATION, request=request)
         # if self.ledgerIdForRequest(request) == POOL_LEDGER_ID:
         #     self.poolManager.doDynamicValidation(request)
         # else:
@@ -1712,8 +1819,10 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         Apply request to appropriate ledger and state. `cons_time` is the
         UTC epoch at which consensus was reached.
         """
+        self.execute_hook(PRE_REQUEST_APPLICATION, request=request)
         req_handler = self.get_req_handler(txn_type=request.operation[TXN_TYPE])
         req_handler.apply(request, cons_time)
+        self.execute_hook(POST_REQUEST_APPLICATION, request=request)
 
     def processRequest(self, request: Request, frm: str):
         """
@@ -1765,11 +1874,13 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                     self.recordAndPropagate(request, frm)
                     self.send_ack_to_client(request.key, frm)
 
-    def is_query(self, txn_type):
+    def is_query(self, txn_type) -> bool:
+        # Does the transaction type correspond to a read?
         handler = self.get_req_handler(txn_type=txn_type)
         return handler and handler.is_query(txn_type)
 
     def process_query(self, request: Request, frm: str):
+        # Process a read request from client
         handler = self.get_req_handler(txn_type=request.operation[TXN_TYPE])
         try:
             handler.doStaticValidation(request)
@@ -2302,8 +2413,15 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         :param pp_time: the time at which PRE-PREPARE was sent
         :param reqs: list of client REQUESTs
         """
+        for req in reqs:
+            self.execute_hook(PRE_REQUEST_COMMIT, request=req, pp_time=pp_time,
+                              state_root=state_root, txn_root=txn_root)
         committedTxns = self.get_executer(ledger_id)(pp_time, reqs,
                                                      state_root, txn_root)
+        for txn in committedTxns:
+            self.execute_hook(POST_REQUEST_COMMIT, txn=txn, pp_time=pp_time,
+                              state_root=state_root, txn_root=txn_root)
+
         if committedTxns:
             first_txn_seq_no = committedTxns[0][F.seqNo.name]
             last_txn_seq_no = committedTxns[-1][F.seqNo.name]
@@ -2339,11 +2457,13 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
     def default_executer(self, ledger_id, pp_time, reqs: List[Request],
                          state_root, txn_root):
         return self.commitAndSendReplies(
-            self.get_req_handler(ledger_id), pp_time, reqs, state_root, txn_root)
+            self.get_req_handler(ledger_id), pp_time, reqs, state_root,
+            txn_root)
 
     def executeDomainTxns(self, ppTime, reqs: List[Request], stateRoot,
                           txnRoot) -> List:
-        committed_txns = self.default_executer(DOMAIN_LEDGER_ID, ppTime, reqs, stateRoot, txnRoot)
+        committed_txns = self.default_executer(DOMAIN_LEDGER_ID, ppTime, reqs,
+                                               stateRoot, txnRoot)
         for txn in committed_txns:
             if txn[TXN_TYPE] == NYM:
                 self.addNewRole(txn)
@@ -2408,7 +2528,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         Adds a new client or steward to this node based on transaction type.
         """
         # If the client authenticator is a simple authenticator then add verkey.
-        #  For a custom authenticator, handle appropriately
+        #  For a custom authenticator, handle appropriately.
+        # NOTE: The following code should not be used in production
         if isinstance(self.clientAuthNr.core_authenticator, SimpleAuthNr):
             identifier = txn[TARGET_NYM]
             verkey = txn.get(VERKEY)
@@ -2656,7 +2777,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         return txn
 
     def transform_txn_for_ledger(self, txn):
-        return self.get_req_handler(DOMAIN_LEDGER_ID).transform_txn_for_ledger(txn)
+        return self.get_req_handler(txn_type=txn[TXN_TYPE]).\
+            transform_txn_for_ledger(txn)
 
     def __enter__(self):
         return self

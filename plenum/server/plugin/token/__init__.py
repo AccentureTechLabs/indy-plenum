@@ -4,6 +4,6 @@ from plenum.server.plugin.token.transactions import TokenTransactions
 
 LEDGER_IDS = {TOKEN_LEDGER_ID, }
 AcceptableWriteTypes = {TokenTransactions.MINT_PUBLIC.value,
-                        TokenTransactions.XFER.value}
+                        TokenTransactions.XFER_PUBLIC.value}
 
 AcceptableQueryTypes = {TokenTransactions.GET_UTXO.value, }

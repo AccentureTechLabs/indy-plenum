@@ -6,10 +6,11 @@ and receives result of the request execution from nodes.
 import copy
 import os
 import time
+import uuid
 from collections import deque, OrderedDict
 from functools import partial
 from typing import List, Union, Dict, Optional, Tuple, Set, Any, \
-    Iterable
+    Iterable, Callable
 
 from common.serializers.serialization import ledger_txn_serializer
 from ledger.merkle_verifier import MerkleVerifier
@@ -178,6 +179,9 @@ class Client(Motor,
         # nodes which are expected to send REPLY
         self.expectingRepliesFor = {}
 
+        self._observers = {}  # type Dict[str, Callable]
+        self._observerSet = set()  # makes it easier to guard against duplicates
+
         tp = loadPlugins(self.basedirpath)
         logger.debug("total plugins loaded in client: {}".format(tp))
 
@@ -329,6 +333,18 @@ class Client(Motor,
             reply = checkIfMoreThanFSameItems(replies, self.f)
             if reply:
                 self.txnLog.append(identifier, reqId, reply)
+                for name in self._observers:
+                    try:
+                        self._observers[name](name, reqId, frm, result,
+                                              numReplies)
+                    except Exception as ex:
+                        # TODO: All errors should not be shown on CLI, or maybe we
+                        # show errors with different color according to the
+                        # severity. Like an error occurring due to node sending
+                        # a malformed message should not result in an error message
+                        # being shown on the cli since the clients would anyway
+                        # collect enough replies from other nodes.
+                        logger.debug("Observer threw an exception", exc_info=ex)
                 return reply
 
     def _statusChanged(self, old, new):
@@ -666,6 +682,23 @@ class Client(Motor,
                                            STH(tree_size=seqNo,
                                                sha256_root_hash=rootHash))
         return True
+
+    def registerObserver(self, observer: Callable, name=None):
+        if not name:
+            name = uuid.uuid4()
+        if name in self._observers or observer in self._observerSet:
+            raise RuntimeError("Observer {} already registered".format(name))
+        self._observers[name] = observer
+        self._observerSet.add(observer)
+
+    def deregisterObserver(self, name):
+        if name not in self._observers:
+            raise RuntimeError("Observer {} not registered".format(name))
+        self._observerSet.remove(self._observers[name])
+        del self._observers[name]
+
+    def hasObserver(self, name):
+        return name in self._observerSet
 
 
 class ClientProvider:

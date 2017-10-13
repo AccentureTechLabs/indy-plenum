@@ -2,11 +2,12 @@ from hashlib import sha256
 from typing import Mapping, NamedTuple, Dict
 
 from common.serializers.serialization import serialize_msg_for_signing
-from plenum.common.constants import REQDIGEST, REQKEY, FORCE
+from plenum.common.constants import REQKEY, FORCE
 from plenum.common.messages.client_request import ClientMessageValidator
 from plenum.common.types import f, OPERATION
 from plenum.common.util import getTimeBasedId
 from stp_core.types import Identifier
+from plenum import PLUGIN_CLIENT_REQUEST_FIELDS
 
 
 class Request:
@@ -17,13 +18,18 @@ class Request:
                  reqId: int=None,
                  operation: Mapping=None,
                  signature: str=None,
-                 signatures: Dict[str, str]=None):
+                 signatures: Dict[str, str]=None,
+                 # Intentionally omitting *args
+                 **kwargs):
         self._identifier = identifier
         self.signature = signature
         self.signatures = signatures
         self.reqId = reqId
         self.operation = operation
         self._digest = None
+        for nm in PLUGIN_CLIENT_REQUEST_FIELDS:
+            if nm in kwargs:
+                setattr(self, nm, kwargs[nm])
 
     @property
     def digest(self):
@@ -33,13 +39,17 @@ class Request:
 
     @property
     def as_dict(self):
-        return {
+        rv = {
             f.IDENTIFIER.nm: self._identifier,
             f.REQ_ID.nm: self.reqId,
             OPERATION: self.operation,
             f.SIG.nm: self.signature,
             f.SIGS.nm: self.signatures
         }
+        for nm in PLUGIN_CLIENT_REQUEST_FIELDS:
+            if hasattr(self, nm):
+                rv[nm] = getattr(self, nm)
+        return rv
 
     def __eq__(self, other):
         return self.as_dict == other.as_dict
@@ -125,8 +135,10 @@ class ReqKey(NamedTuple(REQKEY, [f.IDENTIFIER, f.REQ_ID])):
 class SafeRequest(Request, ClientMessageValidator):
 
     def __init__(self, **kwargs):
+        ClientMessageValidator.__init__(self, operation_schema_is_strict=False,
+                                        schema_is_strict=False)
         self.validate(kwargs)
-        super().__init__(**kwargs)
+        Request.__init__(self, **kwargs)
 
     def validate(self, dct):
         super().validate(dct)

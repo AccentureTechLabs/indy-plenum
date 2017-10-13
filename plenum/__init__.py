@@ -17,6 +17,7 @@ from plenum.config import ENABLED_PLUGINS   # noqa: E402
 
 
 PLUGIN_LEDGER_IDS = set()
+PLUGIN_CLIENT_REQUEST_FIELDS = {}
 
 
 def setup_plugins():
@@ -27,8 +28,11 @@ def setup_plugins():
         spec = spec_from_file_location('__init__.py', plugin_path)
         init = module_from_spec(spec)
         spec.loader.exec_module(init)
-        if 'LEDGER_IDS' in init.__dict__:
-            PLUGIN_LEDGER_IDS.update(init.__dict__['LEDGER_IDS'])
+        plugin_globals = init.__dict__
+        if 'LEDGER_IDS' in plugin_globals:
+            PLUGIN_LEDGER_IDS.update(plugin_globals['LEDGER_IDS'])
+        if 'CLIENT_REQUEST_FIELDS' in plugin_globals:
+            PLUGIN_CLIENT_REQUEST_FIELDS.update(plugin_globals['CLIENT_REQUEST_FIELDS'])
 
 
 setup_plugins()

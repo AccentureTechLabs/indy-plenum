@@ -1,6 +1,6 @@
 from enum import IntEnum, unique
 
-# TODO: move it to plenum-util repo
+# TODO: move it to plenum-util.py repo
 
 
 @unique

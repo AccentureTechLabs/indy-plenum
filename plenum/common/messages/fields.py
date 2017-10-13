@@ -4,7 +4,7 @@ import base58
 import re
 from abc import ABCMeta, abstractmethod
 
-from plenum.common.constants import DOMAIN_LEDGER_ID, POOL_LEDGER_ID
+from plenum.common.constants import VALID_LEDGER_IDS
 from plenum import PLUGIN_LEDGER_IDS
 
 
@@ -121,6 +121,16 @@ class LimitedLengthStringField(FieldBase):
             return '{} is longer than {} symbols'.format(val, self._max_length)
 
 
+class FixedLengthField(FieldBase):
+    def __init__(self, length: int, **kwargs):
+        self.length = length
+        super().__init__(**kwargs)
+
+    def _specific_validation(self, val):
+        if len(val) != self.length:
+            return '{} should have length {}'.format(val, self.length)
+
+
 class SignatureField(FieldBase):
     _base_types = (str, type(None))
     # TODO do nothing because EmptySignature should be raised somehow
@@ -139,7 +149,7 @@ class RoleField(FieldBase):
 
 class NonNegativeNumberField(FieldBase):
 
-    _base_types = (int,)
+    _base_types = (int, float)
 
     def _specific_validation(self, val):
         if val < 0:
@@ -258,7 +268,7 @@ class MessageField(FieldBase):
 
 class LedgerIdField(ChooseField):
     _base_types = (int,)
-    ledger_ids = (POOL_LEDGER_ID, DOMAIN_LEDGER_ID) + tuple(PLUGIN_LEDGER_IDS)
+    ledger_ids = VALID_LEDGER_IDS + tuple(PLUGIN_LEDGER_IDS)
 
     def __init__(self, **kwargs):
         super().__init__(self.ledger_ids, **kwargs)

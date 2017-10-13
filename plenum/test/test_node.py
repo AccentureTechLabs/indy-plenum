@@ -56,7 +56,7 @@ class TestCoreAuthnr(CoreAuthNr):
 
 
 class TestDomainRequestHandler(DomainRequestHandler):
-    valid_txn_types = {'buy', }
+    valid_txn_types = DomainRequestHandler.valid_txn_types.union({'buy', })
 
     def _updateStateWithSingleTxn(self, txn, isCommitted=False):
         typ = txn.get(TXN_TYPE)

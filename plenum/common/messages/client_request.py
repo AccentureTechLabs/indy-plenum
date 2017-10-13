@@ -1,3 +1,4 @@
+from plenum import PLUGIN_CLIENT_REQUEST_FIELDS
 from plenum.common.constants import NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT, ALIAS, SERVICES, TXN_TYPE, DATA, \
     TARGET_NYM, VERKEY, ROLE, NODE, NYM, GET_TXN, VALIDATOR
 from plenum.common.messages.fields import NetworkIpAddressField, \
@@ -95,6 +96,8 @@ class ClientMessageValidator(MessageValidator):
         # TODO: this (and all related functionality) can be removed when
         # when fixed problem with transaction serialization (INDY-338)
         strict = operation_schema_is_strict
+        # Adding fields from enabled plugins to schema.
+        self.schema = self.schema + tuple(PLUGIN_CLIENT_REQUEST_FIELDS.items())
         if not strict:
             operation_field_index = 2
             op = ClientOperationField(schema_is_strict=False)

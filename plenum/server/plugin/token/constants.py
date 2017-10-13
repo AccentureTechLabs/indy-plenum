@@ -8,6 +8,5 @@ ADDRESS = 'address'
 TOKEN_LEDGER_ID = 1001
 
 MINT_PUBLIC = TokenTransactions.MINT_PUBLIC.value
-# TODO: Change to PUBLIC_XFER
-XFER = TokenTransactions.XFER.value
+XFER_PUBLIC = TokenTransactions.XFER_PUBLIC.value
 GET_UTXO = TokenTransactions.GET_UTXO.value

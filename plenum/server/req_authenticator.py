@@ -1,3 +1,5 @@
+from typing import Optional
+
 from plenum.common.constants import TXN_TYPE
 from plenum.common.exceptions import NoAuthenticatorFound
 from plenum.common.types import OPERATION
@@ -27,9 +29,9 @@ class ReqAuthenticator:
         identifiers = set()
         typ = req_data.get(OPERATION, {}).get(TXN_TYPE)
         for authenticator in self._authenticators:
-            if authenticator.__class__.is_query(typ):
+            if authenticator.is_query(typ):
                 return set()
-            if not authenticator.__class__.is_write(typ):
+            if not authenticator.is_write(typ):
                 continue
             rv = authenticator.authenticate(req_data) or set()
             identifiers.update(rv)
@@ -42,3 +44,8 @@ class ReqAuthenticator:
     def core_authenticator(self):
         assert self._authenticators, 'No authenticator registered yet'
         return self._authenticators[0]
+
+    def get_authnr_by_type(self, authnr_type) -> Optional[ClientAuthNr]:
+        for authnr in self._authenticators:
+            if isinstance(authnr, authnr_type):
+                return authnr

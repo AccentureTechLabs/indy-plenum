@@ -16,8 +16,8 @@ def test_trustee_invalid_minting(looper, txnPoolNodeSet, client1, # noqa
                                  wallet1, client1Connected, trustee_wallets,
                                  SF_address, seller_address):
     """
-    Trustees should mint new tokens increasing the balance of `SF_MASTER`
-    and seller_address
+    Trustees trying to mint new tokens using invalid output (negative value),
+    txn fails
     """
     outputs = [[SF_address, -20], [seller_address, 100]]
     with pytest.raises(AssertionError):
@@ -28,8 +28,7 @@ def test_non_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
                                wallet1, client1Connected, SF_address,
                              seller_address, poolTxnData):
     """
-    Trustees should mint new tokens increasing the balance of `SF_MASTER`
-    and seller_address
+    Non trustees (stewards in this case) should not be able to mint new tokens
     """
     total_mint = 100
     sf_master_gets = 60
@@ -44,6 +43,10 @@ def test_non_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
 def test_less_than_min_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
                                  wallet1, client1Connected, trustee_wallets,
                                  SF_address, seller_address):
+    """
+    Less than the required number of trustees participate in minting,
+    hence the txn fails
+    """
     total_mint = 100
     sf_master_gets = 60
     seller_gets = total_mint - sf_master_gets

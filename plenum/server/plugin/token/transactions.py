@@ -13,5 +13,5 @@ class TokenTransactions(Transactions):
     # Also the numeric constants CANNOT collide with other transactions hence a
     # prefix is used
     MINT_PUBLIC = PREFIX + '0'
-    XFER = PREFIX + '1'
+    XFER_PUBLIC = PREFIX + '1'
     GET_UTXO = PREFIX + '2'

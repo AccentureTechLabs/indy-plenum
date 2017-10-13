@@ -78,3 +78,7 @@ class RequestHandler:
 
     def get_query_response(self, request):
         raise NotImplementedError
+
+    @staticmethod
+    def transform_txn_for_ledger(txn):
+        return txn

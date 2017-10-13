@@ -2,7 +2,7 @@ import shutil
 import warnings
 from tempfile import TemporaryDirectory
 
-# TODO: move it to plenum-util repo
+# TODO: move it to plenum-util.py repo
 
 
 class SafeTemporaryDirectory(TemporaryDirectory):

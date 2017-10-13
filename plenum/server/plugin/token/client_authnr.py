@@ -8,7 +8,7 @@ from plenum.common.types import PLUGIN_TYPE_AUTHENTICATOR, OPERATION
 from plenum.common.verifier import Verifier, DidVerifier
 from plenum.server.client_authn import CoreAuthNr
 from plenum.server.plugin.token import AcceptableWriteTypes, AcceptableQueryTypes
-from plenum.server.plugin.token.constants import MINT_PUBLIC, XFER, INPUTS
+from plenum.server.plugin.token.constants import MINT_PUBLIC, XFER_PUBLIC, INPUTS
 from stp_core.crypto.nacl_wrappers import Verifier as NaclVerifier
 
 
@@ -33,7 +33,7 @@ class TokenAuthNr(CoreAuthNr):
             verifier = verifier or DidVerifier
             return super().authenticate(req_data, identifier, signature,
                                         verifier=verifier)
-        if req_data[OPERATION][TXN_TYPE] == XFER:
+        if req_data[OPERATION][TXN_TYPE] == XFER_PUBLIC:
             verifier = verifier or AddressSigVerifier
             return super().authenticate(req_data, verifier=verifier)
 
@@ -41,9 +41,8 @@ class TokenAuthNr(CoreAuthNr):
         if msg[OPERATION][TXN_TYPE] == MINT_PUBLIC:
             return super().serializeForSig(msg, identifier=identifier,
                                            topLevelKeysToIgnore=topLevelKeysToIgnore)
-        if msg[OPERATION][TXN_TYPE] == XFER:
-            # return serialize_msg_for_signing(
-            #     msg, topLevelKeysToIgnore=topLevelKeysToIgnore)
+        if msg[OPERATION][TXN_TYPE] == XFER_PUBLIC:
+            msg = self._get_xfer_ser_data(msg, identifier)
             return super().serializeForSig(msg, identifier=identifier,
                                            topLevelKeysToIgnore=topLevelKeysToIgnore)
 
@@ -54,7 +53,8 @@ class TokenAuthNr(CoreAuthNr):
         return super().getVerkey(identifier)
 
     @staticmethod
-    def _get_xfer_ser_data(req_data):
+    def _get_xfer_ser_data(req_data, identifier):
         new_data = deepcopy(req_data)
-        del new_data[OPERATION][INPUTS]
+        new_data[OPERATION][INPUTS] = [i for i in new_data[OPERATION][INPUTS]
+                                       if i[0] == identifier]
         return new_data

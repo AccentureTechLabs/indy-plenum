@@ -75,15 +75,15 @@ class ClientAuthNr:
         :return: the verification key
         """
 
-    @classmethod
-    @abstractmethod
-    def is_query(cls, typ) -> bool:
-        pass
-
-    @classmethod
-    @abstractmethod
-    def is_write(cls, typ) -> bool:
-        pass
+    # @classmethod
+    # @abstractmethod
+    # def is_query(cls, typ) -> bool:
+    #     pass
+    #
+    # @classmethod
+    # @abstractmethod
+    # def is_write(cls, typ) -> bool:
+    #     pass
 
 
 class NaclAuthNr(ClientAuthNr):
@@ -208,15 +208,12 @@ class SimpleAuthNr(NaclAuthNr):
         return nym.get(VERKEY)
 
 
-class CoreAuthNr(SimpleAuthNr):
+class CoreAuthMixin:
     # TODO: This should know a list of valid fields rather than excluding
     # hardcoded fields
     excluded_from_signing = {f.SIG.nm, f.FEES.nm, f.SIGS.nm}
     write_types = {NODE, NYM}
     query_types = {GET_TXN, }
-
-    def __init__(self, state=None):
-        super().__init__(state)
 
     @classmethod
     def is_query(cls, typ):
@@ -255,7 +252,8 @@ class CoreAuthNr(SimpleAuthNr):
         """
         to_serialize = {k: v for k, v in req_data.items()
                         if k not in self.excluded_from_signing}
-        if f.SIGS.nm not in req_data or req_data[f.SIGS.nm] is None:
+        # if f.SIGS.nm not in req_data or req_data[f.SIGS.nm] is None:
+        if req_data.get(f.IDENTIFIER.nm) and req_data.get(f.SIG.nm):
             try:
                 # if not identifier:
                 identifier = identifier or self._extract_identifier(req_data)
@@ -279,3 +277,9 @@ class CoreAuthNr(SimpleAuthNr):
             msg = {**msg, f.IDENTIFIER.nm: identifier}
         return serialize_msg_for_signing(
             msg, topLevelKeysToIgnore=topLevelKeysToIgnore)
+
+
+class CoreAuthNr(CoreAuthMixin, SimpleAuthNr):
+    def __init__(self, state=None):
+        SimpleAuthNr.__init__(self, state)
+        CoreAuthMixin.__init__(self)

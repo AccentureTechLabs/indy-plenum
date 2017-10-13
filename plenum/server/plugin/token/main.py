@@ -2,7 +2,8 @@ from plenum.common.constants import DOMAIN_LEDGER_ID
 from plenum.server.plugin.token.client_authnr import TokenAuthNr
 from plenum.server.plugin.token.config import get_config
 from plenum.server.plugin.token.constants import TOKEN_LEDGER_ID
-from plenum.server.plugin.token.storage import get_token_hash_store, get_token_ledger, get_token_state, get_utxo_cache
+from plenum.server.plugin.token.storage import get_token_hash_store, \
+    get_token_ledger, get_token_state, get_utxo_cache
 from plenum.server.plugin.token.token_req_handler import TokenReqHandler
 
 
