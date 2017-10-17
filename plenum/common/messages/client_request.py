@@ -112,5 +112,5 @@ class ClientMessageValidator(MessageValidator):
         (f.SIG.nm, SignatureField(optional=True)),
         (f.DIGEST.nm, NonEmptyStringField(optional=True)),
         (f.SIGS.nm, MapField(IdentifierField(),
-                             SignatureField(), nullable=True)),
+                             SignatureField(), optional=True, nullable=True)),
     )
