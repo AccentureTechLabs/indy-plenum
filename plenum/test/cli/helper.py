@@ -271,7 +271,7 @@ def checkRequest(cli, operation):
     client = cli.clients[cName]
     wallet = cli.wallets[cName]  # type: Wallet
     # Ensure client gets back the replies
-    lastReqId = wallet._getIdData().lastReqId
+    lastReqId = client.reqRepStore.lastReqId
 
     waitForSufficientRepliesForRequests(cli.looper, client,
                                         requestIds=[lastReqId])

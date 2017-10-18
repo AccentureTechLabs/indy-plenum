@@ -891,13 +891,12 @@ def nodeByName(nodes, name):
 
 def send_pre_prepare(view_no, pp_seq_no, wallet, nodes,
                      state_root=None, txn_root=None):
-    last_req_id = wallet._getIdData().lastReqId or 0
     pre_prepare = PrePrepare(
         0,
         view_no,
         pp_seq_no,
         get_utc_epoch(),
-        [(wallet.defaultId, last_req_id + 1)],
+        [(wallet.defaultId, Request.gen_req_id())],
         0,
         "random digest",
         DOMAIN_LEDGER_ID,

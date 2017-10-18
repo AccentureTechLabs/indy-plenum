@@ -965,7 +965,6 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         # peers otherwise very few peers will know that this node is lagging
         # behind and it will not receive sufficient consistency proofs to
         # verify the exact state of the ledger.
-        # if self.mode in (Mode.discovered, Mode.participating):
         if Mode.is_done_discovering(self.mode):
             self.sendConfigLedgerStatus(node_name)
             # self.sendDomainLedgerStatus(node_name)

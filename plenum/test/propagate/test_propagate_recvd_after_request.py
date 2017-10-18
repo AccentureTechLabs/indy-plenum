@@ -2,7 +2,6 @@ import pytest
 
 from stp_core.loop.eventually import eventually
 from plenum.common.messages.node_messages import Propagate, MessageRep
-from plenum.test import waits
 from plenum.test.delayers import delay
 from plenum.test.propagate.helper import recvdRequest, recvdPropagate, \
     sentPropagate

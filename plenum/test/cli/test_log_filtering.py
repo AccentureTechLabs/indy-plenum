@@ -18,7 +18,7 @@ def testLogFiltering(cli, validNodeNames, createAllNodes):
     msg = '{"Hello": "Where", "type": "greeting"}'
     cli.enterCmd('client {} send {}'.format(client.name, msg))
 
-    lastRequestId = wallet._getIdData().lastReqId
+    lastRequestId = client.reqRepStore.lastReqId
     waitForSufficientRepliesForRequests(cli.looper, client,
                                         requestIds=[lastRequestId])
 
