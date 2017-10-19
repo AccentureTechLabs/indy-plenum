@@ -337,6 +337,8 @@ class RequestIdentifierField(FieldBase):
         if len(val) != self._length:
             return "should have length {}".format(self._length)
         # idr_error = IdentifierField().validate(val[0])
+        if not isinstance(val[0], str):
+            return 'identifier not present'
         from plenum.common.request import Request
         idr_error = any(self._idr_field.validate(i) for i in val[0].split(Request.idr_delimiter))
         if idr_error:

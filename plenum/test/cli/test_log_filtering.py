@@ -5,7 +5,7 @@ from plenum.test.helper import waitForSufficientRepliesForRequests
 
 
 def testLogFiltering(cli, validNodeNames, createAllNodes):
-    msg = '{"Hello": "There", "type": "greeting"}'
+    msg = '{"amount": 20, "type": "buy"}'
     client, wallet = checkRequest(cli, msg)
 
     x = client.handleOneNodeMsg
@@ -15,10 +15,10 @@ def testLogFiltering(cli, validNodeNames, createAllNodes):
 
     client.handleOneNodeMsg = types.MethodType(handleOneNodeMsg, client)
     client.nodestack.msgHandler = client.handleOneNodeMsg
-    msg = '{"Hello": "Where", "type": "greeting"}'
+    msg = '{"amount": 30, "type": "buy"}'
     cli.enterCmd('client {} send {}'.format(client.name, msg))
 
-    lastRequestId = wallet._getIdData().lastReqId
+    lastRequestId = client.reqRepStore.lastReqId
     waitForSufficientRepliesForRequests(cli.looper, client,
                                         requestIds=[lastRequestId])
 

@@ -28,8 +28,8 @@ def primaryReplicas(nodeSet, up):
 
 
 # noinspection PyIncorrectDocstring
-def testPrimarySelectionAfterPoolReady(
-        looper, nodeSet, ready, wallet1, client1):
+def testPrimarySelectionAfterPoolReady(looper, nodeSet, ready, wallet1, # noqa
+                                       client1):
     """
     Once the pool is ready(node has connected to at least 3 other nodes),
     appropriate primary replicas should be selected.
@@ -79,13 +79,7 @@ def catchup_complete_count(nodeSet):
     return {n.name: n.spylog.count(n.allLedgersCaughtUp) for n in nodeSet}
 
 
-@pytest.fixture(scope='module')
-def view_change_done(looper, nodeSet):
-    ensure_view_change(looper, nodeSet)
-    ensureElectionsDone(looper=looper, nodes=nodeSet)
-
-
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='module') # noqa
 def view_change_done(looper, nodeSet):
     ensure_view_change(looper, nodeSet)
     ensureElectionsDone(looper=looper, nodes=nodeSet)
@@ -93,7 +87,7 @@ def view_change_done(looper, nodeSet):
 # noinspection PyIncorrectDocstring
 
 
-def testPrimarySelectionAfterViewChange(
+def testPrimarySelectionAfterViewChange(    # noqa
         looper,
         nodeSet,
         ready,
