@@ -526,7 +526,8 @@ monitor_spyables = [Monitor.isMasterThroughputTooLow,
                     Monitor.isMasterReqLatencyTooHigh,
                     Monitor.sendThroughput,
                     Monitor.requestOrdered,
-                    Monitor.reset
+                    Monitor.reset,
+                    Monitor.warn_has_lot_unordered_requests
                     ]
 
 

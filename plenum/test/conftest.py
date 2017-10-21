@@ -23,6 +23,7 @@ import pytest
 from plenum.common.keygen_utils import initNodeKeysForBothStacks
 from plenum.test.greek import genNodeNames
 from plenum.test.grouped_load_scheduling import GroupedLoadScheduling
+from plenum.test.pool_transactions.helper import buildPoolClientAndWallet
 from stp_core.common.logging.handlers import TestingHandler
 from stp_core.crypto.util import randomSeed
 from stp_core.network.port_dispenser import genHa
@@ -280,6 +281,7 @@ def logcapture(request, whitelist, concerningLogLevels):
         # message can be an arbitrary object
         if not (isBenign or isTest):
             msg = str(record.msg)
+            # TODO combine whitelisted with '|' and use one regex for msg
             isWhiteListed = any(re.search(w, msg)
                                 for w in whiteListedExceptions)
             if not isWhiteListed:
@@ -533,7 +535,7 @@ def replied1(looper, nodeSet, client1, committed1, wallet1, faultyNodes):
 
 @pytest.yield_fixture(scope="module")
 def looperWithoutNodeSet():
-    with Looper(debug=True) as looper:
+    with Looper() as looper:
         yield looper
 
 
@@ -725,7 +727,7 @@ def testClientClass():
 
 @pytest.yield_fixture(scope="module")
 def txnPoolNodesLooper():
-    with Looper(debug=True) as l:
+    with Looper() as l:
         yield l
 
 
