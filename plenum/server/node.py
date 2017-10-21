@@ -799,13 +799,14 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         self.closeAllKVStores()
 
         self.mode = None
-        if isinstance(self.poolManager, TxnPoolManager):
-            self.ledgerManager.setLedgerState(POOL_LEDGER_ID,
-                                              LedgerState.not_synced)
-        self.ledgerManager.setLedgerState(DOMAIN_LEDGER_ID,
-                                          LedgerState.not_synced)
-        self.ledgerManager.setLedgerState(CONFIG_LEDGER_ID,
-                                          LedgerState.not_synced)
+        self.ledgerManager.prepare_ledgers_for_sync()
+        # if isinstance(self.poolManager, TxnPoolManager):
+        #     self.ledgerManager.setLedgerState(POOL_LEDGER_ID,
+        #                                       LedgerState.not_synced)
+        # self.ledgerManager.setLedgerState(DOMAIN_LEDGER_ID,
+        #                                   LedgerState.not_synced)
+        # self.ledgerManager.setLedgerState(CONFIG_LEDGER_ID,
+        #                                   LedgerState.not_synced)
 
     def closeAllKVStores(self):
         # Clear leveldb lock files
@@ -2342,7 +2343,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         ledger_id = CONFIG_LEDGER_ID
         if self._is_there_pool_ledger():
             # Pool ledger should be synced first
-            # Sync up for domain ledger will be called in
+            # Sync up for config ledger will be called in
             # its post-syncup callback
             ledger_id = POOL_LEDGER_ID
         self._sync_ledger(ledger_id)
