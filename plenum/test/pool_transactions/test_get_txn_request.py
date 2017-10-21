@@ -2,7 +2,7 @@ from plenum.common.constants import openTxns, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, 
     NODE_BLACKLISTER_SUFFIX, NODE_PRIMARY_STORAGE_SUFFIX, HS_FILE, HS_LEVELDB, TXN_TYPE, LedgerState, LEDGER_STATUS, \
     CLIENT_STACK_SUFFIX, PRIMARY_SELECTION_PREFIX, VIEW_CHANGE_PREFIX, OP_FIELD_NAME, CATCH_UP_PREFIX, NYM, \
     POOL_TXN_TYPES, GET_TXN, DATA, MONITORING_PREFIX, TXN_TIME, VERKEY, TARGET_NYM, ROLE, STEWARD, TRUSTEE, ALIAS, \
-    NODE_IP
+    NODE_IP, CURRENT_PROTOCOL_VERSION
 from random import randint
 from plenum.test.pool_transactions.helper import sendAddNewClient
 from stp_core.loop.eventually import eventually
@@ -21,7 +21,8 @@ def testSendGetTxnReqForExistsSeqNo(looper, steward1, stewardWallet):
         DATA: 1
     }
     req = Request(identifier=stewardWallet.defaultId,
-                  operation=op, reqId=Request.gen_req_id())
+                  operation=op, reqId=Request.gen_req_id(),
+                  protocolVersion=CURRENT_PROTOCOL_VERSION)
     steward1.submitReqs(req)
 
     timeout = waits.expectedTransactionExecutionTime(
@@ -40,7 +41,8 @@ def testSendGetTxnReqForNotExistsSeqNo(looper, steward1, stewardWallet):
         DATA: randint(100, 1000)
     }
     req = Request(identifier=stewardWallet.defaultId,
-                  operation=op, reqId=Request.gen_req_id())
+                  operation=op, reqId=Request.gen_req_id(),
+                  protocolVersion=CURRENT_PROTOCOL_VERSION)
     steward1.submitReqs(req)
 
     timeout = waits.expectedTransactionExecutionTime(
@@ -67,7 +69,8 @@ def testSendGetTxnReqSameAsExpected(looper, steward1, stewardWallet):
         DATA: nym_response['seqNo']
     }
     req = Request(identifier=stewardWallet.defaultId,
-                  operation=op, reqId=Request.gen_req_id())
+                  operation=op, reqId=Request.gen_req_id(),
+                  protocolVersion=CURRENT_PROTOCOL_VERSION)
     steward1.submitReqs(req)
 
     get_txn_response = \

@@ -1,6 +1,7 @@
 # inter-node communication
 from enum import IntEnum, unique
 
+from plenum.common.plenum_protocol_version import PlenumProtocolVersion
 from plenum.common.roles import Roles
 from plenum.common.transactions import PlenumTransactions
 
@@ -159,6 +160,8 @@ CONFIG_LEDGER_ID = 2
 
 VALID_LEDGER_IDS = (POOL_LEDGER_ID, DOMAIN_LEDGER_ID, CONFIG_LEDGER_ID)
 
+CURRENT_PROTOCOL_VERSION = PlenumProtocolVersion.STATE_PROOF_SUPPORT.value
+
 PRE_STATIC_VALIDATION = 1
 POST_STATIC_VALIDATION = 2
 PRE_DYNAMIC_VALIDATION = 3
@@ -172,3 +175,4 @@ NODE_HOOKS = [PRE_STATIC_VALIDATION, POST_STATIC_VALIDATION,
               PRE_DYNAMIC_VALIDATION, POST_DYNAMIC_VALIDATION,
               PRE_REQUEST_APPLICATION, POST_REQUEST_APPLICATION,
               PRE_REQUEST_COMMIT, POST_REQUEST_COMMIT]
+
