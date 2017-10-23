@@ -52,7 +52,7 @@ class Request:
             if hasattr(self, nm):
                 rv[nm] = getattr(self, nm)
         if self.protocolVersion is not None:
-            rv[f.PROTOCOL_VERSION.nm] = self.protocolVersionz
+            rv[f.PROTOCOL_VERSION.nm] = self.protocolVersion
         return rv
 
     def __eq__(self, other):

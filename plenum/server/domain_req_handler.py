@@ -20,7 +20,7 @@ class DomainRequestHandler(RequestHandler):
     stateSerializer = domain_state_serializer
     valid_txn_types = {NYM, }
 
-    def __init__(self, ledger, state, config, reqProcessors, , bls_store):
+    def __init__(self, ledger, state, config, reqProcessors, bls_store):
         super().__init__(ledger, state)
         self.config = config
         self.reqProcessors = reqProcessors

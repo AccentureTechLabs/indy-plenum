@@ -47,7 +47,7 @@ def test_multiple_inputs_with_1_incorrect_input_sig(tokens_distributed, # noqa
     sigs[request.operation[INPUTS][1][0]] = sigs[request.operation[INPUTS][0][0]]
     with pytest.raises(AssertionError):
         waitForSufficientRepliesForRequests(looper, client1,
-                                            requests=[request], fVal=1)
+                                            requests=[request])
 
 
 def test_multiple_inputs_outputs_without_change():
