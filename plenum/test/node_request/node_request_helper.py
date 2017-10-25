@@ -65,7 +65,7 @@ def checkPrePrepared(looper,
             """
             l1 = len([param for param in
                       getAllArgs(primary, primary.processPrePrepare)])
-            assert l1 == 0
+            assert l1 == 0, 'Primary {} sees no pre-prepare'.format(primary)
 
         def nonPrimarySeesCorrectNumberOfPREPREPAREs():
             """
@@ -93,7 +93,8 @@ def checkPrePrepared(looper,
             for npr in nonPrimaryReplicas:
                 actualMsgs = len([param for param in
                                   getAllArgs(npr, npr.processPrePrepare)
-                                  if (param['pp'][0:3] + param['pp'][4:],
+                                  if (param['pre_prepare'][0:3] +
+                                      param['pre_prepare'][4:],
                                       param['sender']) == (
                                       expectedPrePrepareRequest[0:3] +
                                           expectedPrePrepareRequest[4:],
@@ -107,7 +108,8 @@ def checkPrePrepared(looper,
                                          actualMsgs,
                                          numOfMsgsWithZFN,
                                          numOfMsgsWithFaults))
-            assert passes >= len(nonPrimaryReplicas) - faultyNodes
+            assert passes >= len(nonPrimaryReplicas) - faultyNodes, \
+                'Non-primary sees correct number pre-prepares - {}'.format(passes)
 
         def primarySentsCorrectNumberOfPREPREPAREs():
             """
@@ -134,7 +136,7 @@ def checkPrePrepared(looper,
                               faultyNodes,
                               actualMsgs,
                               numOfMsgsWithZFN,
-                              numOfMsgsWithZFN)
+                              numOfMsgsWithZFN), 'Primary sends correct number of per-prepare'
 
         def nonPrimaryReceivesCorrectNumberOfPREPREPAREs():
             """
@@ -161,7 +163,8 @@ def checkPrePrepared(looper,
                                      numOfMsgsWithZFN,
                                      numOfMsgsWithFaults)
 
-            assert passes >= len(nonPrimaryReplicas) - faultyNodes
+            assert passes >= len(nonPrimaryReplicas) - faultyNodes, \
+                'Non-primary receives correct number of pre-prepare -- {}'.format(passes)
 
         primarySeesCorrectNumberOfPREPREPAREs()
         nonPrimarySeesCorrectNumberOfPREPREPAREs()
