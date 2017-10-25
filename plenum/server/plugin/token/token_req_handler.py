@@ -12,10 +12,10 @@ from plenum.common.txn_util import reqToTxn
 from plenum.common.types import f
 from plenum.persistence.util import txnsWithSeqNo
 from plenum.server.domain_req_handler import DomainRequestHandler
-from plenum.server.plugin.token.constants import XFER_PUBLIC, MINT_PUBLIC, OUTPUTS, \
-    INPUTS, GET_UTXO, ADDRESS
+from plenum.server.plugin.token.constants import XFER_PUBLIC, MINT_PUBLIC, \
+    OUTPUTS, INPUTS, GET_UTXO, ADDRESS
 from plenum.server.plugin.token.messages.fields import PublicOutputField, \
-    PublicInputField, PublicInputsField, PublicOutputsField
+    PublicInputsField, PublicOutputsField
 from plenum.server.plugin.token.types import Output
 from plenum.server.plugin.token.utxo_cache import UTXOCache
 from plenum.server.req_handler import RequestHandler
@@ -26,7 +26,6 @@ class TokenReqHandler(RequestHandler):
     query_types = {GET_UTXO, }
     _public_output_validator = IterableField(PublicOutputField())
     _public_outputs_validator = PublicOutputsField()
-    # _public_input_validator = IterableField(PublicInputField())
     _public_inputs_validator = PublicInputsField()
     MinSendersForPublicMint = 4
 
@@ -47,7 +46,6 @@ class TokenReqHandler(RequestHandler):
                 raise InvalidClientRequest(request.identifier, request.reqId,
                                            "{} needs to be present".
                                            format(OUTPUTS))
-            # error = self._validate_output(operation[OUTPUTS])
             error = self._public_outputs_validator.validate(operation[OUTPUTS])
             if not error:
                 if operation[TXN_TYPE] == XFER_PUBLIC:
@@ -56,7 +54,6 @@ class TokenReqHandler(RequestHandler):
                                                    request.reqId,
                                                    "{} needs to be present".
                                                    format(INPUTS))
-                    # TODO: validate for input repetition
                     error = self._public_inputs_validator.validate(
                         operation[INPUTS])
 

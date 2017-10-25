@@ -43,6 +43,8 @@ poolStateDbName = 'pool_state'
 domainStateDbName = 'domain_state'
 configStateDbName = 'config_state'
 
+stateSignatureDbName = 'state_signature'
+
 # There is only one seqNoDB as it maintain the mapping of
 # request id to sequence numbers
 seqNoDbName = 'seq_no_db'
@@ -59,6 +61,8 @@ domainStateStorage = KeyValueStorageType.Leveldb
 poolStateStorage = KeyValueStorageType.Leveldb
 configStateStorage = KeyValueStorageType.Leveldb
 reqIdToTxnStorage = KeyValueStorageType.Leveldb
+
+stateSignatureStorage = KeyValueStorageType.Leveldb
 
 DefaultPluginPath = {
     # PLUGIN_BASE_DIR_PATH: "<abs path of plugin directory can be given here,
@@ -102,6 +106,9 @@ STATS_SERVER_IP = '127.0.0.1'
 STATS_SERVER_PORT = 30000
 STATS_SERVER_MESSAGE_BUFFER_MAX_SIZE = 1000
 
+# Node status configuration
+DUMP_VALIDATOR_INFO_PERIOD_SEC = 60
+
 RAETLogLevel = "terse"
 RAETLogLevelCli = "mute"
 RAETLogFilePath = os.path.join(os.path.expanduser(baseDir), "raet.log")
@@ -137,7 +144,7 @@ enableStdOutLogging = True
 
 # OPTIONS RELATED TO TESTS
 
-# todo test 60sec after https://evernym.atlassian.net/browse/SOV-995 closed
+# TODO test 60sec
 TestRunningTimeLimitSec = 100
 
 # Expected time for one stack to get connected to another
@@ -204,5 +211,25 @@ WALLET_FILE_MODE = 0o600  # -rw-------
 # because of being delivered out of order or being out of watermarks or not
 # having finalised requests.
 ACCEPTABLE_DEVIATION_PREPREPARE_SECS = 600  # seconds
+
+# TXN fields length limits
+ALIAS_FIELD_LIMIT = 256
+DIGEST_FIELD_LIMIT = 512
+TIE_IDR_FIELD_LIMIT = 256
+NAME_FIELD_LIMIT = 256
+SENDER_CLIENT_FIELD_LIMIT = 256
+HASH_FIELD_LIMIT = 256
+SIGNATURE_FIELD_LIMIT = 512
+JSON_FIELD_LIMIT = 5 * 1024
+DATA_FIELD_LIMIT = 5 * 1024
+NONCE_FIELD_LIMIT = 512
+ORIGIN_FIELD_LIMIT = 128
+ENC_FIELD_LIMIT = 16
+RAW_FIELD_LIMIT = 5 * 1024
+SIGNATURE_TYPE_FIELD_LIMIT = 16
+BLS_KEY_LIMIT = 512
+BLS_SIG_LIMIT = 512
+BLS_MULTI_SIG_LIMIT = 512
+VERSION_FIELD_LIMIT = 128
 
 ENABLED_PLUGINS = ['token', 'fees']

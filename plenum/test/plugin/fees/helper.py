@@ -22,7 +22,7 @@ def set_fees_request(trustees, fees, sender_client):
 def send_set_fees(looper, trustees, fees, sender_client):
     request = set_fees_request(trustees, fees, sender_client)
     waitForSufficientRepliesForRequests(looper, sender_client,
-                                        requests=[request], fVal=1)
+                                        requests=[request])
     return request
 
 
@@ -44,7 +44,7 @@ def get_fees_request(sender_wallet, sender_client):
 def send_get_fees(looper, sender_wallet, sender_client):
     request = get_fees_request(sender_wallet, sender_client)
     waitForSufficientRepliesForRequests(looper, sender_client,
-                                        requests=[request], fVal=1)
+                                        requests=[request])
     return request
 
 
