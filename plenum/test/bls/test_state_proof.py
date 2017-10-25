@@ -1,4 +1,5 @@
-from plenum.common.constants import ROOT_HASH, MULTI_SIGNATURE, PROOF_NODES, TXN_TYPE, DATA, TXN_TIME, STATE_PROOF
+from plenum.common.constants import ROOT_HASH, MULTI_SIGNATURE, PROOF_NODES, \
+    TXN_TYPE, DATA, TXN_TIME, STATE_PROOF, DOMAIN_LEDGER_ID
 from plenum.common.types import f
 from plenum.common.util import get_utc_epoch
 from plenum.test.helper import sendRandomRequests, waitForSufficientRepliesForRequests
@@ -16,8 +17,9 @@ def test_make_proof_bls_enabled(looper, txnPoolNodeSet,
 
     req = reqs[0]
     for node in txnPoolNodeSet:
-        key = node.reqHandler.prepare_buy_key(req.identifier, req.reqId)
-        proof = node.reqHandler.make_proof(key)
+        req_handler = node.get_req_handler(DOMAIN_LEDGER_ID)
+        key = req_handler.prepare_buy_key(req.identifier, req.reqId)
+        proof = req_handler.make_proof(key)
         assert proof
         assert ROOT_HASH in proof
         assert MULTI_SIGNATURE in proof
@@ -32,15 +34,13 @@ def test_make_result_bls_enabled(looper, txnPoolNodeSet,
 
     req = reqs[0]
     for node in txnPoolNodeSet:
-        key = node.reqHandler.prepare_buy_key(req.identifier, req.reqId)
-        proof = node.reqHandler.make_proof(key)
+        req_handler = node.get_req_handler(DOMAIN_LEDGER_ID)
+        key = req_handler.prepare_buy_key(req.identifier, req.reqId)
+        proof = req_handler.make_proof(key)
 
         txn_time = get_utc_epoch()
-        result = node.reqHandler.make_result(req,
-                                             {TXN_TYPE: "buy"},
-                                             2,
-                                             txn_time,
-                                             proof)
+        result = req_handler.make_result(req, {TXN_TYPE: "buy"}, 2,
+            txn_time, proof)
         assert result
         assert result[DATA] == {TXN_TYPE: "buy"}
         assert result[f.IDENTIFIER.nm] == req.identifier
@@ -61,15 +61,16 @@ def test_make_result_no_protocol_version(looper, txnPoolNodeSet,
 
     req = reqs[0]
     for node in txnPoolNodeSet:
-        key = node.reqHandler.prepare_buy_key(req.identifier, req.reqId)
-        proof = node.reqHandler.make_proof(key)
+        req_handler = node.get_req_handler(DOMAIN_LEDGER_ID)
+        key = req_handler.prepare_buy_key(req.identifier, req.reqId)
+        proof = req_handler.make_proof(key)
 
         txn_time = get_utc_epoch()
-        result = node.reqHandler.make_result(req,
-                                             {TXN_TYPE: "buy"},
-                                             2,
-                                             txn_time,
-                                             proof)
+        result = req_handler.make_result(req,
+                                         {TXN_TYPE: "buy"},
+                                         2,
+                                         txn_time,
+                                         proof)
         assert result
         assert result[DATA] == {TXN_TYPE: "buy"}
         assert result[f.IDENTIFIER.nm] == req.identifier

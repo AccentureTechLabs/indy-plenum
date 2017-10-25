@@ -60,7 +60,6 @@ class TestCoreAuthnr(CoreAuthNr):
 class TestDomainRequestHandler(DomainRequestHandler):
     valid_txn_types = DomainRequestHandler.valid_txn_types.union({'buy', })
 
-
     @staticmethod
     def prepare_buy_for_state(txn):
         from common.serializers.serialization import domain_state_serializer
@@ -335,10 +334,11 @@ class TestNode(TestNodeCore, Node):
 
     def sendRepliesToClients(self, committedTxns, ppTime):
         committedTxns = list(committedTxns)
+        req_handler = self.get_req_handler(DOMAIN_LEDGER_ID)
         for txn in committedTxns:
             if txn[TXN_TYPE] == "buy":
-                key, value = self.reqHandler.prepare_buy_for_state(txn)
-                proof = self.reqHandler.make_proof(key)
+                key, value = req_handler.prepare_buy_for_state(txn)
+                proof = req_handler.make_proof(key)
                 if proof:
                     txn[STATE_PROOF] = proof
         super().sendRepliesToClients(committedTxns, ppTime)
