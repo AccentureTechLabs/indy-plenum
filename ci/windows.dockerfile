@@ -1,6 +1,6 @@
 FROM microsoft/windowsservercore
 
-LABEL Description="indy-plenum" Vendor="Hyperledger"
+LABEL Description="plenum" Vendor="Evernym"
 
 # Install environment
 

@@ -6,12 +6,11 @@ import sys
 import rlp
 from rlp.utils import decode_hex, encode_hex, ascii_chr, str_to_bytes
 from state.db.db import BaseDB
-from state.util.fast_rlp import encode_optimized, decode_optimized
+from state.util.fast_rlp import encode_optimized
 from state.util.utils import is_string, to_string, sha3, sha3rlp, encode_int
 from storage.kv_in_memory import KeyValueStorageInMemory
 
 rlp_encode = encode_optimized
-rlp_decode = decode_optimized
 
 bin_to_nibbles_cache = {}
 
@@ -970,10 +969,9 @@ class Trie:
             return True
         return self.root_hash in self._db
 
-    def produce_spv_proof(self, key, root=None):
-        root = root or self.root_node
+    def produce_spv_proof(self, key):
         proof.push(RECORDING)
-        self.get_at(root, key)
+        self.get(key)
         o = proof.get_nodelist()
         proof.pop()
         return o
@@ -987,44 +985,24 @@ class Trie:
         """
         return self._get(root_node, bin_to_nibbles(to_string(key)))
 
-    def generate_state_proof(self, key, root=None, serialize=False):
-        # NOTE: The method `produce_spv_proof` is not deliberately modified
-        root = root or self.root_node
-        pf = self.produce_spv_proof(key, root)
-        pf.append(copy.deepcopy(root))
-        return pf if not serialize else self.serialize_proof(pf)
-
     @staticmethod
-    def verify_spv_proof(root, key, value, proof_nodes, serialized=False):
-        # NOTE: `root` is a derivative of the last element of `proof_nodes`
-        # but it's important to keep `root` as a separate as signed root
-        # hashes will be published.
-        if serialized:
-            proof_nodes = Trie.deserialize_proof(proof_nodes)
+    def verify_spv_proof(root, key, proof_nodes):
         proof.push(VERIFYING, proof_nodes)
-        new_trie = Trie(KeyValueStorageInMemory())
+        t = Trie(KeyValueStorageInMemory())
 
-        for node in proof_nodes:
+        for i, node in enumerate(proof_nodes):
             R = rlp_encode(node)
             H = sha3(R)
-            new_trie._db.put(H, R)
+            t._db.put(H, R)
         try:
-            new_trie.root_hash = root
-            v = new_trie.get(key)
+            t.root_hash = root
+            t.get(key)
             proof.pop()
-            return v == value
+            return True
         except Exception as e:
             print(e)
             proof.pop()
             return False
-
-    @staticmethod
-    def serialize_proof(proof_nodes):
-        return rlp_encode(proof_nodes)
-
-    @staticmethod
-    def deserialize_proof(ser_proof):
-        return rlp_decode(ser_proof)
 
 
 if __name__ == "__main__":

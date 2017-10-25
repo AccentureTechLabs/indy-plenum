@@ -28,18 +28,11 @@ from plenum.test.node_catchup.conftest import whitelist, \
 from plenum.test.pool_transactions.conftest import looper, clientAndWallet1, \
     client1, wallet1, client1Connected
 
-@pytest.fixture
-def logger():
-    logger = getlogger()
-    old_value = logger.getEffectiveLevel()
-    logger.root.setLevel(logging.WARNING)
-    yield logger
-    logger.root.setLevel(old_value)
-
-# autouse and inject before others in all tests
-pytestmark = pytest.mark.usefixtures("logger")
-
+Logger.setLogLevel(logging.WARNING)
+logger = getlogger()
 txnCount = 5
+
+
 TestRunningTimeLimitSec = math.inf
 
 

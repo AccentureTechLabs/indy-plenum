@@ -71,7 +71,7 @@ class AccountApp(App):
             }})
         if expected:
             waitForSufficientRepliesForRequests(self.looper, self.client,
-                                                requests=[req])
+                                                requests=[req], fVal=1)
         else:
             timeout = waits.expectedReqNAckQuorumTime()
             for node in nodes:
@@ -86,7 +86,7 @@ class AccountApp(App):
             TARGET_NYM: self.wallet.defaultId
         })
         waitForSufficientRepliesForRequests(self.looper, self.client,
-                                            requests=[req])
+                                            requests=[req], fVal=1)
 
         return self.client.hasConsensus(*req.key)[BALANCE]
 
@@ -96,7 +96,7 @@ class AccountApp(App):
             TARGET_NYM: self.wallet.defaultId
         })
         waitForSufficientRepliesForRequests(self.looper, self.client,
-                                            requests=[req])
+                                            requests=[req], fVal=1)
 
         return req
 

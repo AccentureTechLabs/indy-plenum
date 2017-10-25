@@ -74,7 +74,6 @@ def expectedPoolInterconnectionTime(nodeCount):
     # bug (`'str' object has no attribute 'keys'`) which supposed to be
     # fixed in the 3pcbatch feature
     # https://evernym.atlassian.net/browse/SOV-995
-    # TODO check actual state
     # multiply by 2 because we need to re-create connections which can be done on a second re-try only
     # (we may send pings on some of the re-tries)
     return min(0.8 * config.TestRunningTimeLimitSec,
@@ -115,6 +114,12 @@ def expectedPoolGetReadyTimeout(nodeCount):
     return expectedPoolInterconnectionTime(nodeCount) + \
         expectedPoolConsistencyProof(nodeCount) + \
         expectedPoolCatchupTime(nodeCount)
+
+
+def expectedPoolLedgerCheck(nodeCount):
+    # TODO this is a legacy for sovrin-node
+    # remove it and replace in the sovrin-node
+    return 5 * nodeCount
 
 
 def expectedPoolLedgerRepliedMsgPersisted(nodeCount):
@@ -237,7 +242,6 @@ def expectedClientToPoolConnectionTimeout(nodeCount):
     # bug (`'str' object has no attribute 'keys'`) which supposed to be
     # fixed in the 3pcbatch feature
     # https://evernym.atlassian.net/browse/SOV-995
-    # TODO check actual state
     return config.ExpectedConnectTime * nodeCount + \
         config.RETRY_TIMEOUT_RESTRICTED
 

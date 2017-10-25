@@ -1,14 +1,13 @@
 from plenum import PLUGIN_CLIENT_REQUEST_FIELDS
 from plenum.common.constants import NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT, ALIAS, SERVICES, TXN_TYPE, DATA, \
-    TARGET_NYM, VERKEY, ROLE, NODE, NYM, GET_TXN, VALIDATOR, BLS_KEY
+    TARGET_NYM, VERKEY, ROLE, NODE, NYM, GET_TXN, VALIDATOR
 from plenum.common.messages.fields import NetworkIpAddressField, \
     NetworkPortField, NonEmptyStringField, IterableField, \
     ChooseField, ConstantField, DestNodeField, VerkeyField, DestNymField, \
     RoleField, TxnSeqNoField, IdentifierField, \
-    NonNegativeNumberField, SignatureField, MapField, LimitedLengthStringField, ProtocolVersionField
+    NonNegativeNumberField, SignatureField, MapField
 from plenum.common.messages.message_base import MessageValidator
 from plenum.common.types import OPERATION, f
-from plenum.config import ALIAS_FIELD_LIMIT, DIGEST_FIELD_LIMIT, SIGNATURE_FIELD_LIMIT, BLS_KEY_LIMIT
 
 
 class ClientNodeOperationData(MessageValidator):
@@ -17,9 +16,8 @@ class ClientNodeOperationData(MessageValidator):
         (NODE_PORT, NetworkPortField(optional=True)),
         (CLIENT_IP, NetworkIpAddressField(optional=True)),
         (CLIENT_PORT, NetworkPortField(optional=True)),
-        (ALIAS, LimitedLengthStringField(max_length=ALIAS_FIELD_LIMIT)),
+        (ALIAS, NonEmptyStringField()),
         (SERVICES, IterableField(ChooseField(values=(VALIDATOR,)), optional=True)),
-        (BLS_KEY, LimitedLengthStringField(max_length=BLS_KEY_LIMIT, optional=True)),
     )
 
     def _validate_message(self, dct):
@@ -42,7 +40,7 @@ class ClientNodeOperation(MessageValidator):
 class ClientNYMOperation(MessageValidator):
     schema = (
         (TXN_TYPE, ConstantField(NYM)),
-        (ALIAS, LimitedLengthStringField(max_length=ALIAS_FIELD_LIMIT, optional=True)),
+        (ALIAS, NonEmptyStringField(optional=True)),
         (VERKEY, VerkeyField(optional=True)),
         (TARGET_NYM, DestNymField()),
         (ROLE, RoleField(optional=True)),
@@ -111,12 +109,8 @@ class ClientMessageValidator(MessageValidator):
         (f.IDENTIFIER.nm, IdentifierField(nullable=True)),
         (f.REQ_ID.nm, NonNegativeNumberField()),
         (OPERATION, ClientOperationField()),
-        (f.SIG.nm, SignatureField(max_length=SIGNATURE_FIELD_LIMIT,
-                                  optional=True)),
-        (f.DIGEST.nm, LimitedLengthStringField(max_length=DIGEST_FIELD_LIMIT,
-                                               optional=True)),
-        (f.PROTOCOL_VERSION.nm, ProtocolVersionField(optional=True)),
+        (f.SIG.nm, SignatureField(optional=True)),
+        (f.DIGEST.nm, NonEmptyStringField(optional=True)),
         (f.SIGS.nm, MapField(IdentifierField(),
-                             SignatureField(max_length=DIGEST_FIELD_LIMIT),
-                             optional=True, nullable=True)),
+                             SignatureField(), optional=True, nullable=True)),
     )

@@ -2,7 +2,7 @@ import pytest
 from plenum.common.keygen_utils import initRemoteKeys
 
 from stp_core.loop.eventually import eventually
-from plenum.common.exceptions import MissingSignature
+from plenum.common.exceptions import EmptySignature
 from plenum.common.exceptions import NotConnectedToAny
 from stp_core.common.log import getlogger
 from plenum.common.constants import OP_FIELD_NAME, REPLY, REQACK
@@ -107,7 +107,7 @@ def testSendRequestWithoutSignatureFails(pool):
             params = n.spylog.getLastParams(Node.handleInvalidClientMsg)
             ex = params['ex']
             msg, _ = params['wrappedMsg']
-            assert isinstance(ex, MissingSignature)
+            assert isinstance(ex, EmptySignature)
             assert msg.get(f.IDENTIFIER.nm) == request.identifier
 
             params = n.spylog.getLastParams(Node.discard)
@@ -115,7 +115,7 @@ def testSendRequestWithoutSignatureFails(pool):
             (msg, frm) = params["msg"]
             assert msg == request.as_dict
             assert msg.get(f.IDENTIFIER.nm) == request.identifier
-            assert "MissingSignature" in reason
+            assert "EmptySignature" in reason
 
     pool.run(go)
 
@@ -201,17 +201,14 @@ def testReplyWhenRequestAlreadyExecuted(looper, nodeSet, client1, sent1):
     will be sent again to the client. An acknowledgement will not be sent
     for a repeated request.
     """
-    waitForSufficientRepliesForRequests(looper, client1, requests=[sent1])
+    waitForSufficientRepliesForRequests(looper, client1,
+                                        requests=[sent1], fVal=2)
 
     originalRequestResponsesLen = nodeCount * 2
     duplicateRequestRepliesLen = nodeCount  # for a duplicate request we need to
+    serializedPayload, _ = client1.nodestack.signAndSerialize(sent1, None)
+    client1.nodestack._enqueueIntoAllRemotes(serializedPayload, None)
 
-    message_parts, err_msg = \
-        client1.nodestack.prepare_for_sending(sent1, None)
-
-    for part in message_parts:
-        client1.nodestack._enqueueIntoAllRemotes(part, None)
-        
     def chk():
         assertLength([response for response in client1.inBox
                       if (response[0].get(f.RESULT.nm) and

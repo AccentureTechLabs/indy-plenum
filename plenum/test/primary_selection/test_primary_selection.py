@@ -36,14 +36,14 @@ def testPrimarySelectionAfterPoolReady(looper, nodeSet, ready, wallet1, # noqa
     """
     def checkPrimaryPlacement():
         # Node names sorted by rank
-        sortedNodes = sorted(nodeSet.nodes.values(),
-                             key=operator.attrgetter("rank"))
+        sortedNodeNames = sorted(nodeSet.nodes.values(),
+                                 key=operator.attrgetter("rank"))
 
-        for idx, node in enumerate(sortedNodes):
+        for idx, node in enumerate(sortedNodeNames):
             # For instance 0, the primary replica should be on the node with
             # rank 0
             if idx == 0:
-                Replica.generateName(sortedNodes[idx].name, 0)
+                Replica.generateName(sortedNodeNames[idx], 0)
                 assert node.replicas[0].isPrimary
                 assert not node.replicas[1].isPrimary
                 assert not node.replicas[2].isPrimary
@@ -51,7 +51,7 @@ def testPrimarySelectionAfterPoolReady(looper, nodeSet, ready, wallet1, # noqa
             # For instance 1, the primary replica should be on the node with
             # rank 1
             if idx == 1:
-                Replica.generateName(sortedNodes[idx].name, 1)
+                Replica.generateName(sortedNodeNames[idx], 1)
                 assert not node.replicas[0].isPrimary
                 assert node.replicas[1].isPrimary
                 assert not node.replicas[2].isPrimary
@@ -59,7 +59,7 @@ def testPrimarySelectionAfterPoolReady(looper, nodeSet, ready, wallet1, # noqa
             # For instance 2, the primary replica should be on the node with
             # rank 2
             if idx == 2:
-                Replica.generateName(sortedNodes[idx].name, 2)
+                Replica.generateName(sortedNodeNames[idx], 2)
                 assert not node.replicas[0].isPrimary
                 assert not node.replicas[1].isPrimary
                 assert node.replicas[2].isPrimary

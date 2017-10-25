@@ -7,8 +7,7 @@ from typing import Iterable
 
 from jsonpickle import json
 from ledger.compact_merkle_tree import CompactMerkleTree
-from ledger.genesis_txn.genesis_txn_file_util import create_genesis_txn_init_ledger, \
-    update_genesis_txn_file_name_if_outdated
+from ledger.genesis_txn.genesis_txn_file_util import create_genesis_txn_init_ledger
 from ledger.genesis_txn.genesis_txn_initiator_from_file import GenesisTxnInitiatorFromFile
 from ledger.ledger import Ledger
 from plenum.cli.command import helpCmd, statusNodeCmd, statusClientCmd, \
@@ -68,7 +67,7 @@ from plenum.common.util import getMaxFailures, \
     firstValue, randomString, bootstrapClientKeys, \
     getFriendlyIdentifier, \
     normalizedWalletFileName, getWalletFilePath, \
-    getLastSavedWalletFileName, updateWalletsBaseDirNameIfOutdated
+    getLastSavedWalletFileName
 from stp_core.common.log import \
     getlogger, Logger
 from plenum.server.node import Node
@@ -106,6 +105,7 @@ class Cli:
     name = 'plenum'
     properName = 'Plenum'
     fullName = 'Plenum protocol'
+    githubUrl = 'https://github.com/evernym/plenum'
 
     NodeClass = Node
     ClientClass = Client
@@ -259,8 +259,6 @@ class Cli:
         tp = loadPlugins(self.basedirpath)
         self.logger.debug("total plugins loaded in cli: {}".format(tp))
 
-        updateWalletsBaseDirNameIfOutdated(self.config)
-
         self.restoreLastActiveWallet()
 
         self.checkIfCmdHandlerAndCmdMappingExists()
@@ -282,12 +280,12 @@ class Cli:
 
     def __init_registry_from_ledger(self):
         self.nodeRegLoadedFromFile = True
-        update_genesis_txn_file_name_if_outdated(
-            self.basedirpath, self.config.poolTransactionsFile)
+        dataDir = self.basedirpath
+
         genesis_txn_initiator = GenesisTxnInitiatorFromFile(
-            self.basedirpath, self.config.poolTransactionsFile)
+            dataDir, self.config.poolTransactionsFile)
         ledger = Ledger(CompactMerkleTree(),
-                        dataDir=self.basedirpath,
+                        dataDir=dataDir,
                         fileName=self.config.poolTransactionsFile,
                         genesis_txn_initiator=genesis_txn_initiator,
                         transactionLogStore=KeyValueStorageInMemory())
@@ -900,11 +898,11 @@ class Cli:
         if not self.withNode:
             self.print("This command is only available if you start "
                        "this cli with command line argument --with-node "
-                       "(and it assumes you have installed indy-node "
+                       "(and it assumes you have installed sovrin-node "
                        "dependency)")
             return False
         if not self.NodeClass:
-            self.print("This command requires indy-node dependency, "
+            self.print("This command requires sovrin-node dependency, "
                        "please install it and then resume.")
             return False
 
@@ -1817,9 +1815,9 @@ class Cli:
 
             return True
         except (ValueError, AttributeError) as e:
-            self.logger.warning(
+            self.logger.info(
                 "error occurred while restoring wallet {}: {}".
-                format(walletFilePath, e))
+                format(walletFilePath, e), Token.BoldOrange)
         except IOError as e:
             self.logger.debug("No such wallet file exists ({})".
                               format(walletFilePath))

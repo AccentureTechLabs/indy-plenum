@@ -7,9 +7,6 @@ class MessageLenValidator:
 
     def validate(self, msg: bytes):
         has_len = len(msg)
-        if not self.is_len_less_than_limit(has_len):
+        if has_len > self.max_allowed:
             raise InvalidMessageExceedingSizeException(
                 self.max_allowed, has_len)
-
-    def is_len_less_than_limit(self, l):
-        return l <= self.max_allowed

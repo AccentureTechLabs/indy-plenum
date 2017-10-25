@@ -121,7 +121,8 @@ def testBankReqValidationPlugin(looper, nodeSet, client1, wallet1, tdir,
             AMOUNT: 30
         }})
 
-    waitForSufficientRepliesForRequests(looper, client1, requests=[req])
+    waitForSufficientRepliesForRequests(looper, client1,
+                                        requests=[req], fVal=1)
     for n in nodeSet:  # type: Node
         opVerifier, = n.opVerifiers
         assert opVerifier.count == 1

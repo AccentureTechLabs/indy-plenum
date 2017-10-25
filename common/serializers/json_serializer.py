@@ -38,7 +38,7 @@ except (ImportError, TypeError):
             if isinstance(o, (bytes, bytearray)):
                 return '"{}"'.format(base64.b64encode(o).decode("utf-8"))
             else:
-                return super().encode(o)
+                return json.JSONEncoder.encode(self, o)
 
     JsonEncoder = OrderedJsonEncoder()
 
