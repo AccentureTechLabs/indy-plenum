@@ -1,22 +1,26 @@
 """
 Some model objects used in Plenum protocol.
 """
-from typing import NamedTuple, Set, Optional, Any
+from typing import NamedTuple, Set
 
 from plenum.common.messages.node_messages import Prepare, Commit
 
 ThreePhaseVotes = NamedTuple("ThreePhaseVotes", [
-    ("voters", Set[str]),
-    ("msg", Optional[Any])])
+    ("voters", Set[str])])
+
+
+InsChgVotes = NamedTuple("InsChg", [
+    ("viewNo", int),
+    ("voters", Set[str])])
 
 
 class TrackedMsgs(dict):
 
-    def getKey(self, msg):
+    def newVoteMsg(self, msg):
         raise NotImplementedError
 
-    def newVoteMsg(self, msg):
-        return ThreePhaseVotes(voters=set(), msg=msg)
+    def getKey(self, msg):
+        raise NotImplementedError
 
     def addMsg(self, msg, voter: str):
         key = self.getKey(msg)
@@ -46,6 +50,9 @@ class Prepares(TrackedMsgs):
     (viewNo, seqNo) -> (digest, {senders})
     """
 
+    def newVoteMsg(self, msg):
+        return ThreePhaseVotes(set())
+
     def getKey(self, prepare):
         return prepare.viewNo, prepare.ppSeqNo
 
@@ -58,7 +65,7 @@ class Prepares(TrackedMsgs):
         :param prepare: the PREPARE to add to the list
         :param voter: the name of the node who sent the PREPARE
         """
-        self.addMsg(prepare, voter)
+        super().addMsg(prepare, voter)
 
     # noinspection PyMethodMayBeStatic
     def hasPrepare(self, prepare: Prepare) -> bool:
@@ -79,6 +86,9 @@ class Commits(TrackedMsgs):
     tuple containing request digest and set of sender node names(sender
     replica names in case of multiple protocol instances)
     """
+
+    def newVoteMsg(self, msg):
+        return ThreePhaseVotes(set())
 
     def getKey(self, commit):
         return commit.viewNo, commit.ppSeqNo
@@ -115,6 +125,9 @@ class InstanceChanges(TrackedMsgs):
     different suspicions on different nodes, its ok to consider all suspicions
     that can trigger a view change as equal
     """
+
+    def newVoteMsg(self, msg):
+        return InsChgVotes(msg.viewNo, set())
 
     def getKey(self, msg):
         return msg if isinstance(msg, int) else msg.viewNo

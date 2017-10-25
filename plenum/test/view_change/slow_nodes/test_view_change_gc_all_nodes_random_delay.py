@@ -105,7 +105,8 @@ def test_view_change_gc_in_between_3pc_all_nodes_delays(
     #    -> last_ordered_3pc = (+2, 1)
     reset_delays_and_process_delayeds(txnPoolNodeSet)
     waitForSufficientRepliesForRequests(looper, client,
-                                        requests=requests)
+                                        requests=requests,
+                                        fVal=numNodes - 1)
 
     checkViewNoForNodes(txnPoolNodeSet, viewNo)
     last_ordered_3pc = (viewNo, 1)

@@ -1,32 +1,31 @@
 import copy
+import os
 
 import pytest
 from state.pruning_state import PruningState
 from state.state import State
 from state.trie.pruning_trie import BLANK_NODE, BLANK_ROOT
-from storage.kv_in_memory import KeyValueStorageInMemory
 from storage.kv_store_leveldb import KeyValueStorageLeveldb
 
 i = 0
 
-
-@pytest.yield_fixture(scope="function", params=['leveldb', 'in_memory'])
-def db(request, tempdir) -> State:
-    if request == 'leveldb':
-        return KeyValueStorageLeveldb(tempdir, 'kv{}'.format(i))
-    return KeyValueStorageInMemory()
+# TODO: combine with in-memory tests
 
 
 @pytest.yield_fixture(scope="function")
-def state(db) -> State:
-    state = PruningState(db)
+def state(tempdir) -> State:
+    global i
+    state = PruningState(
+        KeyValueStorageLeveldb(tempdir, 'kv{}'.format(i)))
     yield state
     state.close()
 
 
 @pytest.yield_fixture(scope="function")
-def state2(db) -> State:
-    state = PruningState(db)
+def state2(tempdir) -> State:
+    global i
+    state = PruningState(
+        KeyValueStorageLeveldb(tempdir, 'kv2{}'.format(i)))
     yield state
     state.close()
 
@@ -239,39 +238,3 @@ def testStateData(state):
 
     data = {k: v for k, v in state.as_dict.items()}
     assert data == {b'k1': b'v1', b'k2': b'v2', b'k3': b'v3'}
-
-
-def test_get_for_old_root(state):
-    state.set(b'k1', b'v1')
-    state.set(b'k2', b'v2')
-    head_hash1 = state.headHash
-    state.set(b'k1', b'v111')
-    state.set(b'k3', b'v3')
-    head_hash2 = state.headHash
-
-    assert state.get_for_root_hash(head_hash1, b'k1') == b'v1'
-    assert state.get_for_root_hash(head_hash1, b'k2') == b'v2'
-    assert not state.get_for_root_hash(head_hash1, b'k3')
-
-    assert state.get_for_root_hash(head_hash2, b'k1') == b'v111'
-    assert state.get_for_root_hash(head_hash2, b'k2') == b'v2'
-    assert state.get_for_root_hash(head_hash2, b'k3') == b'v3'
-
-
-def test_get_for_old_root_committed(state):
-    state.set(b'k1', b'v1')
-    state.set(b'k2', b'v2')
-    state.commit()
-    head_hash1 = state.committedHeadHash
-    state.set(b'k1', b'v111')
-    state.set(b'k3', b'v3')
-    state.commit()
-    head_hash2 = state.committedHeadHash
-
-    assert state.get_for_root_hash(head_hash1, b'k1') == b'v1'
-    assert state.get_for_root_hash(head_hash1, b'k2') == b'v2'
-    assert not state.get_for_root_hash(head_hash1, b'k3')
-
-    assert state.get_for_root_hash(head_hash2, b'k1') == b'v111'
-    assert state.get_for_root_hash(head_hash2, b'k2') == b'v2'
-    assert state.get_for_root_hash(head_hash2, b'k3') == b'v3'

@@ -24,16 +24,10 @@ verify that throughput has dropped
 verify a view change happens
 """
 
-@pytest.fixture
-def logger():
-    logger = getlogger()
-    old_value = logger.getEffectiveLevel()
-    logger.root.setLevel(logging.DEBUG)
-    yield logger
-    logger.root.setLevel(old_value)
 
-# autouse and inject before others in all tests
-pytestmark = pytest.mark.usefixtures("logger")
+logger = getlogger()
+logger.root.setLevel(logging.DEBUG)
+
 
 def latestPerfChecks(nodes):
     """

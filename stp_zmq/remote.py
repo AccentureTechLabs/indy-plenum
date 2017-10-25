@@ -1,8 +1,6 @@
 from stp_core.common.config.util import getConfig
 import time
 import zmq
-
-from stp_core.common.constants import ZMQ_NETWORK_PROTOCOL
 from stp_core.common.log import getlogger
 import sys
 from zmq.utils.monitor import recv_monitor_message
@@ -79,7 +77,7 @@ class Remote:
         sock.identity = localPubKey
         set_keepalive(sock, self.config)
         set_zmq_internal_queue_length(sock, self.config)
-        addr = '{protocol}://{}:{}'.format(*self.ha, protocol=ZMQ_NETWORK_PROTOCOL)
+        addr = 'tcp://{}:{}'.format(*self.ha)
         sock.connect(addr)
         self.socket = sock
         logger.trace('connecting socket {} {} to remote {}'.

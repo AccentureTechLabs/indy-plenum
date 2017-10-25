@@ -1,4 +1,5 @@
 from collections import OrderedDict, defaultdict
+from itertools import groupby
 
 from typing import Tuple, Union
 
@@ -22,11 +23,10 @@ class ReqState:
         self.request = request
         self.forwarded = False
         # forwardedTo helps in finding to how many replicas has this request
-        # been forwarded to, helps in garbage collection
+        # been forwarded to, helps in garbage collection, see `gc` of `Replica`
         self.forwardedTo = 0
         self.propagates = {}
         self.finalised = None
-        self.executed = False
 
     def req_with_acceptable_quorum(self, quorum: Quorum):
         digests = defaultdict(set)
@@ -71,18 +71,14 @@ class Requests(OrderedDict):
         """
         return self[req.key].forwarded
 
-    def mark_as_forwarded(self, req: Request, to: int):
+    def flagAsForwarded(self, req: Request, to: int):
         """
-        Works together with 'mark_as_executed' and 'free' methods.
-
-        It marks request as forwarded to 'to' replicas.
-        To let request be removed, it should be marked as executed and each of
-        'to' replicas should call 'free'.
+        Set the given request's forwarded attribute to True
         """
         self[req.key].forwarded = True
         self[req.key].forwardedTo = to
 
-    def add_propagate(self, req: Request, sender: str):
+    def addPropagate(self, req: Request, sender: str):
         """
         Add the specified request to the list of received
         PROPAGATEs.
@@ -111,47 +107,20 @@ class Requests(OrderedDict):
         state = self[req.key]
         state.set_finalised(req)
 
-    def mark_as_executed(self, req: Request):
-        """
-        Works together with 'mark_as_forwarded' and 'free' methods.
-
-        It makes request to be removed if all replicas request was
-        forwarded to freed it.
-        """
-        state = self[req.key]
-        state.executed = True
-        self._clean(state)
-
-    def free(self, request_key):
-        """
-        Works together with 'mark_as_forwarded' and
-        'mark_as_executed' methods.
-
-        It makes request to be removed if all replicas request was
-        forwarded to freed it and if request executor marked it as executed.
-        """
-        state = self.get(request_key)
-        if not state:
-            return
-        state.forwardedTo -= 1
-        self._clean(state)
-
-    def _clean(self, state):
-        if state.executed and state.forwardedTo <= 0:
-            self.pop(state.request.key, None)
-
-    def has_propagated(self, req: Request, sender: str) -> bool:
+    def hasPropagated(self, req: Request, sender: str) -> bool:
         """
         Check whether the request specified has already been propagated.
         """
         return req.key in self and sender in self[req.key].propagates
 
-    def is_finalised(self, reqKey: Tuple[str, int]) -> bool:
+    def isFinalised(self, reqKey: Tuple[str, int]) -> bool:
         return reqKey in self and self[reqKey].finalised
 
     def digest(self, reqKey: Tuple) -> str:
         if reqKey in self and self[reqKey].finalised:
             return self[reqKey].finalised.digest
+        else:
+            return None
 
 
 class Propagator:
@@ -168,16 +137,15 @@ class Propagator:
 
         :param request: the REQUEST to propagate
         """
-        if self.requests.has_propagated(request, self.name):
+        if self.requests.hasPropagated(request, self.name):
             logger.trace("{} already propagated {}".format(self, request))
         else:
-            self.requests.add_propagate(request, self.name)
+            self.requests.addPropagate(request, self.name)
             propagate = self.createPropagate(request, clientName)
-            logger.info(
-                "{} propagating request {} from client {}".
-                format(self, (request.identifier, request.reqId), clientName),
-                extra={"cli": True, "tags": ["node-propagate"]}
-            )
+            logger.debug("{} propagating {} request {} from client {}".
+                         format(self, request.identifier, request.reqId,
+                                clientName),
+                         extra={"cli": True, "tags": ["node-propagate"]})
             self.send(propagate)
 
     @staticmethod
@@ -246,7 +214,7 @@ class Propagator:
 
         self.replicas.pass_message(ReqKey(*key))
         self.monitor.requestUnOrdered(*key)
-        self.requests.mark_as_forwarded(request, self.replicas.num_replicas)
+        self.requests.flagAsForwarded(request, self.replicas.num_replicas)
 
     # noinspection PyUnresolvedReferences
     def recordAndPropagate(self, request: Request, clientName):

@@ -357,9 +357,8 @@ class PrimaryElector(PrimaryDecider):
 
         if self.hasPrimaryQuorum(inst_id):
             if replica.isPrimary is None:
-                declarations = self.primaryDeclarations[inst_id]
-                (primary, seqNo), freq = \
-                    mostCommonElement(declarations.values())
+                primary, seqNo = mostCommonElement(
+                    self.primaryDeclarations[inst_id].values())
                 logger.display("{}{} selected primary {} for instance {} "
                                "(view {})"
                                .format(PRIMARY_SELECTION_PREFIX, replica,
@@ -367,7 +366,8 @@ class PrimaryElector(PrimaryDecider):
                                extra={"cli": "ANNOUNCE",
                                       "tags": ["node-election"]})
                 logger.debug("{} selected primary on the basis of {}".
-                             format(replica, declarations),
+                             format(replica,
+                                    self.primaryDeclarations[inst_id]),
                              extra={"cli": False})
 
                 # If the maximum primary declarations are for this node
@@ -442,7 +442,7 @@ class PrimaryElector(PrimaryDecider):
                 # converting each tie(a list of node names) to a tuple.
                 ties = [tuple(t) for t in
                         self.reElectionProposals[instId].values()]
-                tieAmong, freq = mostCommonElement(ties)
+                tieAmong = mostCommonElement(ties)
 
                 self.setElectionDefaults(instId)
 

@@ -6,8 +6,6 @@ from abc import ABCMeta, abstractmethod
 
 from plenum.common.constants import VALID_LEDGER_IDS
 from plenum import PLUGIN_LEDGER_IDS
-from plenum.common.plenum_protocol_version import PlenumProtocolVersion
-from plenum.config import BLS_MULTI_SIG_LIMIT
 
 
 class FieldValidator(metaclass=ABCMeta):
@@ -133,21 +131,16 @@ class FixedLengthField(FieldBase):
             return '{} should have length {}'.format(val, self.length)
 
 
-class SignatureField(LimitedLengthStringField):
+class SignatureField(FieldBase):
     _base_types = (str, type(None))
+    # TODO do nothing because EmptySignature should be raised somehow
 
     def _specific_validation(self, val):
-        if val is None:
-            # TODO do nothing because EmptySignature should be raised somehow
-            return
-        if len(val) == 0:
-            return "signature can not be empty"
-        return super()._specific_validation(val)
+        return
 
 
 class RoleField(FieldBase):
     _base_types = (str, type(None))
-
     # TODO implement
 
     def _specific_validation(self, val):
@@ -176,6 +169,7 @@ class ConstantField(FieldBase):
 
 
 class IterableField(FieldBase):
+
     _base_types = (list, tuple)
 
     def __init__(self, inner_field_type: FieldValidator, **kwargs):
@@ -193,7 +187,7 @@ class IterableField(FieldBase):
 
 
 class MapField(FieldBase):
-    _base_types = (dict,)
+    _base_types = (dict, )
 
     def __init__(self, key_field: FieldValidator,
                  value_field: FieldValidator,
@@ -252,7 +246,7 @@ class ChooseField(FieldBase):
     def _specific_validation(self, val):
         if val not in self._possible_values:
             return "expected one of '{}', unknown value '{}'" \
-                .format(', '.join(map(str, self._possible_values)), val)
+                   .format(', '.join(map(str, self._possible_values)), val)
 
 
 class MessageField(FieldBase):
@@ -268,8 +262,8 @@ class MessageField(FieldBase):
         try:
             self._message_type(**val)
         except TypeError as ex:
-            return "value {} cannot be represented as {} due to: {}" \
-                .format(val, self._message_type.typename, ex)
+            return "value {} cannot be represented as {} due to: {}"\
+                   .format(val, self._message_type.typename, ex)
 
 
 class LedgerIdField(ChooseField):
@@ -293,7 +287,7 @@ class Base58Field(FieldBase):
         if invalid_chars:
             # only 10 chars to shorten the output
             to_print = sorted(invalid_chars)[:10]
-            return 'should not contain the following chars {}{}'.format(
+            return 'should not contain the following chars {}{}' .format(
                 to_print, ' (truncated)' if len(to_print) < len(invalid_chars) else '')
         if self.byte_lengths is not None:
             # TODO could impact performace, need to check
@@ -304,7 +298,7 @@ class Base58Field(FieldBase):
 
 
 class IdentifierField(Base58Field):
-    _base_types = (str,)
+    _base_types = (str, )
 
     def __init__(self, *args, **kwargs):
         # TODO the tests in client are failing because the field
@@ -324,7 +318,7 @@ class DestNodeField(Base58Field):
 
 
 class DestNymField(Base58Field):
-    _base_types = (str,)
+    _base_types = (str, )
 
     def __init__(self, *args, **kwargs):
         # TODO the tests in client are failing because the field
@@ -358,14 +352,10 @@ class TieAmongField(FieldBase):
     _base_types = (list, tuple)
     _length = 2
 
-    def __init__(self, max_length: int, **kwargs):
-        super().__init__(**kwargs)
-        self._max_length = max_length
-
     def _specific_validation(self, val):
         if len(val) != self._length:
             return "should have length {}".format(self._length)
-        idr_error = LimitedLengthStringField(max_length=self._max_length).validate(val[0])
+        idr_error = NonEmptyStringField().validate(val[0])
         if idr_error:
             return idr_error
         ts_error = NonNegativeNumberField().validate(val[1])
@@ -375,7 +365,7 @@ class TieAmongField(FieldBase):
 
 # TODO: think about making it a subclass of Base58Field
 class VerkeyField(FieldBase):
-    _base_types = (str,)
+    _base_types = (str, )
     _b58abbreviated = Base58Field(byte_lengths=(16,))
     _b58full = Base58Field(byte_lengths=(32,))
 
@@ -388,7 +378,7 @@ class VerkeyField(FieldBase):
 
 
 class HexField(FieldBase):
-    _base_types = (str,)
+    _base_types = (str, )
 
     def __init__(self, length=None, **kwargs):
         super().__init__(**kwargs)
@@ -404,7 +394,7 @@ class HexField(FieldBase):
 
 
 class MerkleRootField(Base58Field):
-    _base_types = (str,)
+    _base_types = (str, )
 
     def __init__(self, *args, **kwargs):
         super().__init__(byte_lengths=(32,), *args, **kwargs)
@@ -416,18 +406,15 @@ class TimestampField(FieldBase):
 
     def _specific_validation(self, val):
         if val < self._oldest_time:
-            return 'should be greater than {} but was {}'. \
+            return 'should be greater than {} but was {}'.\
                 format(self._oldest_time, val)
 
 
-class JsonField(LimitedLengthStringField):
+class JsonField(FieldBase):
     _base_types = (str,)
 
     def _specific_validation(self, val):
         # TODO: Need a mechanism to ensure a non-empty JSON if needed
-        lim_str_err = super()._specific_validation(val)
-        if lim_str_err:
-            return lim_str_err
         try:
             json.loads(val)
         except json.decoder.JSONDecodeError:
@@ -442,7 +429,7 @@ class SerializedValueField(FieldBase):
             return 'empty serialized value'
 
 
-class VersionField(LimitedLengthStringField):
+class VersionField(FieldBase):
     _base_types = (str,)
 
     def __init__(self, components_number=(3,), **kwargs):
@@ -450,9 +437,6 @@ class VersionField(LimitedLengthStringField):
         self._comp_num = components_number
 
     def _specific_validation(self, val):
-        lim_str_err = super()._specific_validation(val)
-        if lim_str_err:
-            return lim_str_err
         parts = val.split(".")
         if len(parts) not in self._comp_num:
             return "version consists of {} components, but it should contain {}".format(
@@ -464,6 +448,7 @@ class VersionField(LimitedLengthStringField):
 
 
 class TxnSeqNoField(FieldBase):
+
     _base_types = (int,)
 
     def _specific_validation(self, val):
@@ -507,7 +492,7 @@ class StringifiedNonNegativeNumberField(NonNegativeNumberField):
         try:
             return self._num_validator.validate(int(val))
         except ValueError:
-            return "stringified int expected, but was '{}'" \
+            return "stringified int expected, but was '{}'"\
                 .format(val)
 
 
@@ -524,35 +509,3 @@ class LedgerInfoField(FieldBase):
             err = validator(value)
             if err:
                 return err
-
-
-class BlsMultiSignatureField(FieldBase):
-    _base_types = (list, tuple)
-    _root_hash_validator = MerkleRootField()
-    _participants_validator = IterableField(NonEmptyStringField())
-    _multisig_validator = \
-        LimitedLengthStringField(max_length=BLS_MULTI_SIG_LIMIT)
-
-    def _specific_validation(self, val):
-        sig, participants, pool_state_root = val
-        err = self._root_hash_validator.validate(pool_state_root)
-        if err:
-            return err
-        err = self._multisig_validator.validate(sig)
-        if err:
-            return err
-        err = self._participants_validator.validate(participants)
-        if err:
-            return err
-        if len(participants) == 0:
-            return "multi-signature participants list is empty"
-
-
-class ProtocolVersionField(FieldBase):
-    _base_types = (int, type(None))
-
-    def _specific_validation(self, val):
-        if val is None:
-            return
-        if not PlenumProtocolVersion.has_value(val):
-            return 'Unknown protocol version value {}'.format(val)
