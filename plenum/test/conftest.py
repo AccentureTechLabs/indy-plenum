@@ -14,18 +14,15 @@ from typing import Dict, Any
 
 from ledger.genesis_txn.genesis_txn_file_util import create_genesis_txn_init_ledger
 from plenum.common.signer_did import DidSigner
-from plenum.bls.bls_crypto_factory import create_default_bls_crypto_factory
 from plenum.common.signer_simple import SimpleSigner
 from plenum.test import waits
 
 import gc
 import pip
 import pytest
-from plenum.common.keygen_utils import initNodeKeysForBothStacks, init_bls_keys
+from plenum.common.keygen_utils import initNodeKeysForBothStacks
 from plenum.test.greek import genNodeNames
 from plenum.test.grouped_load_scheduling import GroupedLoadScheduling
-from plenum.test.node_catchup.helper import ensureClientConnectedToNodesAndPoolLedgerSame
-from plenum.test.pool_transactions.helper import buildPoolClientAndWallet
 from stp_core.common.logging.handlers import TestingHandler
 from stp_core.crypto.util import randomSeed
 from stp_core.network.port_dispenser import genHa
@@ -39,7 +36,7 @@ from stp_core.common.log import getlogger, Logger
 from stp_core.loop.looper import Looper, Prodable
 from plenum.common.constants import TXN_TYPE, DATA, NODE, ALIAS, CLIENT_PORT, \
     CLIENT_IP, NODE_PORT, NYM, CLIENT_STACK_SUFFIX, PLUGIN_BASE_DIR_PATH, ROLE, \
-    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, TRUSTEE, VERKEY, BLS_KEY
+    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, TRUSTEE, VERKEY
 from plenum.common.txn_util import getTxnOrderedFields
 from plenum.common.types import PLUGIN_TYPE_STATS_CONSUMER, f
 from plenum.common.util import getNoInstances, getMaxFailures
@@ -283,7 +280,6 @@ def logcapture(request, whitelist, concerningLogLevels):
         # message can be an arbitrary object
         if not (isBenign or isTest):
             msg = str(record.msg)
-            # TODO combine whitelisted with '|' and use one regex for msg
             isWhiteListed = any(re.search(w, msg)
                                 for w in whiteListedExceptions)
             if not isWhiteListed:
@@ -537,7 +533,7 @@ def replied1(looper, nodeSet, client1, committed1, wallet1, faultyNodes):
 
 @pytest.yield_fixture(scope="module")
 def looperWithoutNodeSet():
-    with Looper() as looper:
+    with Looper(debug=True) as looper:
         yield looper
 
 
@@ -579,25 +575,23 @@ def dirName():
 @pytest.fixture(scope="module")
 def poolTxnData(request):
     nodeCount = getValueFromModule(request, "nodeCount", 4)
-    nodes_with_bls = getValueFromModule(request, "nodes_wth_bls", nodeCount)
-    data = {'txns': [], 'seeds': {}, 'nodesWithBls': {}}
+    data = {'txns': [], 'seeds': {}}
+
     for i, node_name in zip(range(1, nodeCount + 1), genNodeNames(nodeCount)):
         data['seeds'][node_name] = node_name + '0' * (32 - len(node_name))
         steward_name = 'Steward' + str(i)
         data['seeds'][steward_name] = steward_name + \
             '0' * (32 - len(steward_name))
-
         n_idr = SimpleSigner(seed=data['seeds'][node_name].encode()).identifier
         s_idr = SimpleSigner(
             seed=data['seeds'][steward_name].encode()).identifier
-
         data['txns'].append({
             TXN_TYPE: NYM,
             ROLE: STEWARD,
             ALIAS: steward_name,
             TARGET_NYM: s_idr
         })
-        node_txn = {
+        data['txns'].append({
             TXN_TYPE: NODE,
             f.IDENTIFIER.nm: s_idr,
             TARGET_NYM: n_idr,
@@ -607,17 +601,9 @@ def poolTxnData(request):
                 NODE_IP: '127.0.0.1',
                 NODE_PORT: genHa()[1],
                 CLIENT_IP: '127.0.0.1',
-                CLIENT_PORT: genHa()[1],
+                CLIENT_PORT: genHa()[1]
             }
-        }
-
-        if i <= nodes_with_bls:
-            _, bls_key = create_default_bls_crypto_factory().generate_bls_keys(
-                seed=data['seeds'][node_name])
-            node_txn[DATA][BLS_KEY] = bls_key
-            data['nodesWithBls'][node_name] = True
-
-        data['txns'].append(node_txn)
+        })
 
     # # Add 4 Trustees
     for i in range(4):
@@ -698,8 +684,8 @@ def tdirWithNodeKeepInited(tdir, poolTxnData, poolTxnNodeNames):
     seeds = poolTxnData["seeds"]
     for nName in poolTxnNodeNames:
         seed = seeds[nName]
-        use_bls = nName in poolTxnData['nodesWithBls']
-        initNodeKeysForBothStacks(nName, tdir, seed, use_bls=use_bls, override=True)
+        initNodeKeysForBothStacks(nName, tdir, seed, override=True)
+
 
 @pytest.fixture(scope="module")
 def poolTxnClientData(poolTxnClientNames, poolTxnData):
@@ -721,30 +707,6 @@ def trustee_data(poolTxnData):
 
 
 @pytest.fixture(scope="module")
-def pool_txn_stewards_data(poolTxnStewardNames, poolTxnData):
-    return [(name, poolTxnData["seeds"][name].encode())
-            for name in poolTxnStewardNames]
-
-
-@pytest.fixture(scope="module")
-def stewards_and_wallets(looper, txnPoolNodeSet, pool_txn_stewards_data,
-                      tdirWithPoolTxns):
-    clients_and_wallets = []
-    for pool_txn_steward_data in pool_txn_stewards_data:
-        steward_client, steward_wallet = buildPoolClientAndWallet(pool_txn_steward_data,
-                                              tdirWithPoolTxns)
-        looper.add(steward_client)
-        ensureClientConnectedToNodesAndPoolLedgerSame(looper, steward_client,
-                                                      *txnPoolNodeSet)
-        clients_and_wallets.append((steward_client, steward_wallet))
-
-    yield clients_and_wallets
-
-    for (client, wallet) in clients_and_wallets:
-        client.stop()
-
-
-@pytest.fixture(scope="module")
 def poolTxnClient(tdirWithPoolTxns, tdirWithDomainTxns, txnPoolNodeSet):
     return genTestClient(txnPoolNodeSet, tmpdir=tdirWithPoolTxns,
                          usePoolLedger=True)
@@ -763,7 +725,7 @@ def testClientClass():
 
 @pytest.yield_fixture(scope="module")
 def txnPoolNodesLooper():
-    with Looper() as l:
+    with Looper(debug=True) as l:
         yield l
 
 

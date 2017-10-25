@@ -1,5 +1,7 @@
 # Plenum Byzantine Fault Tolerant Protocol    
 
+[![Build Status](https://jenkins.evernym.com/buildStatus/icon?job=Plenum/master)](https://jenkins.evernym.com/job/Plenum/job/master/)    
+
 Plenum is the heart of the distributed ledger technology inside Hyperledger
 Indy. As such, it provides features somewhat similar in scope to those
 found in Fabric. However, it is special-purposed for use in an identity
@@ -21,10 +23,10 @@ Plenum.
 ### Installing Plenum
 
 ```
-pip install indy-plenum
+pip install plenum
 ```
 
-From here, you can play with the command-line interface (see the [tutorial](https://github.com/hyperledger/indy-plenum/wiki))...
+From here, you can play with the command-line interface (see the [tutorial](https://github.com/evernym/plenum/wiki))...
 
 Note: For Windows, we recommended using either [cmder](http://cmder.net/) or [conemu](https://conemu.github.io/).
 
@@ -35,12 +37,12 @@ plenum
 ...or run the tests.
 
 ```
-git clone https://github.com/hyperledger/indy-plenum.git
-cd indy-plenum
+git clone https://github.com/evernym/plenum.git
+cd plenum
 python -m plenum.test
 ```
 
-**Details about the protocol, including a great tutorial, can be found on the [wiki](https://github.com/hyperledger/indy-plenum/wiki).**
+**Details about the protocol, including a great tutorial, can be found on the [wiki](https://github.com/evernym/plenum/wiki).**
 
 ### Installing python 3.5 and libsodium:
 

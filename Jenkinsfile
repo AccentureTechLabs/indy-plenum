@@ -1,6 +1,5 @@
 #!groovy
 
-// TODO remove after shared libs refactoring
 @Library('SovrinHelpers') _
 
 def name = 'indy-plenum'
@@ -203,15 +202,10 @@ def stateTestWindowsNoDocker = {
 
 def buildDebUbuntu = { repoName, releaseVersion, sourcePath ->
     def volumeName = "$name-deb-u1604"
-    if (env.BRANCH_NAME != '' && env.BRANCH_NAME != 'master') {
-        volumeName = "${volumeName}.${BRANCH_NAME}"
-    }
-    if (sh(script: "docker volume ls -q | grep -q '^$volumeName\$'", returnStatus: true) == 0) {
-        sh "docker volume rm $volumeName"
-    }
+    sh "docker volume rm -f $volumeName"
     dir('build-scripts/ubuntu-1604') {
-        sh "./build-$name-docker.sh \"$sourcePath\" $releaseVersion $volumeName"
-        sh "./build-3rd-parties-docker.sh $volumeName"
+        sh "./build-$name-docker.sh $sourcePath $releaseVersion"
+        sh "./build-3rd-parties-docker.sh"
     }
     return "$volumeName"
 }

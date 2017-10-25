@@ -21,7 +21,7 @@ notifierPluginTriggerEvents = {
 
 
 class PluginManager:
-    prefix = 'indynotifier'
+    prefix = 'sovrinnotifier'
     __instance = None
 
     def __new__(cls):

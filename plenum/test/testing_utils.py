@@ -45,9 +45,3 @@ def setupTestLogging():
         style='{')
     console = getConsole()
     console.reinit(verbosity=console.Wordage.concise)
-
-
-class FakeSomething:
-    def __init__(self, **kwargs):
-        for name, value in kwargs.items():
-            setattr(self, name, value)

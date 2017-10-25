@@ -1,16 +1,17 @@
-from plenum.bls.bls_crypto_factory import create_default_bls_crypto_factory
-from plenum.common.constants import CLIENT_STACK_SUFFIX
+
 from plenum.common.stacks import nodeStackClass
 from stp_core.crypto.util import randomSeed
+from stp_zmq.util import createCertsFromKeys
+
+from plenum.common.constants import CLIENT_STACK_SUFFIX
 
 
-def initLocalKeys(name, baseDir, sigseed, *, use_bls, override=False):
-    # * forces usage of names for args on the right hand side
-    pubkey, verkey = nodeStackClass.initLocalKeys(name, baseDir, sigseed, override=override)
+def initLocalKeys(name, baseDir, sigseed, override=False, config=None):
+    pubkey, verkey = nodeStackClass.initLocalKeys(name, baseDir, sigseed,
+                                                  override=override)
     print("Public key is", pubkey)
     print("Verification key is", verkey)
-    blspk = init_bls_keys(baseDir, name, sigseed) if use_bls else None
-    return pubkey, verkey, blspk
+    return pubkey, verkey
 
 
 def initRemoteKeys(name, remote_name, baseDir, verkey, override=False):
@@ -18,28 +19,15 @@ def initRemoteKeys(name, remote_name, baseDir, verkey, override=False):
                                   override=override)
 
 
-def init_bls_keys(baseDir, node_name, seed=None):
-    # TODO: do we need keys based on transport keys?
-    bls_factory = create_default_bls_crypto_factory(basedir=baseDir, node_name=node_name)
-    stored_pk = bls_factory.generate_and_store_bls_keys(seed)
-    print("BLS Public key is", stored_pk)
-    return stored_pk
-
-
-def initNodeKeysForBothStacks(name, baseDir, sigseed, *, use_bls=True, override=False):
+def initNodeKeysForBothStacks(name, baseDir, sigseed, override=False):
     # `sigseed` is initialised to keep the seed same for both stacks.
     # Both node and client stacks need to have same keys
-    if not sigseed:
-        sigseed = sigseed or randomSeed()
-        print("Generating keys for random seed", sigseed)
-    else:
-        print("Generating keys for provided seed", sigseed)
+    sigseed = sigseed or randomSeed()
 
-    node_stack_name = name
-    client_stack_name = node_stack_name + CLIENT_STACK_SUFFIX
-    initLocalKeys(client_stack_name, baseDir, sigseed, use_bls=False, override=override)
-    keys = initLocalKeys(node_stack_name, baseDir, sigseed, use_bls=use_bls, override=override)
-    return keys
+    nodeStackClass.initLocalKeys(name + CLIENT_STACK_SUFFIX, baseDir, sigseed,
+                                 override=override)
+    return nodeStackClass.initLocalKeys(name, baseDir, sigseed,
+                                        override=override)
 
 
 def areKeysSetup(name, baseDir, config=None):

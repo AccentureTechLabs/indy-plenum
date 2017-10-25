@@ -9,7 +9,6 @@ from itertools import combinations, permutations
 from typing import Iterable, Iterator, Tuple, Sequence, Union, Dict, TypeVar, \
     List, Optional
 
-from crypto.bls.bls_bft import BlsBft
 from plenum.common.stacks import nodeStackClass, clientStackClass
 from plenum.server.client_authn import CoreAuthNr
 from plenum.server.domain_req_handler import DomainRequestHandler
@@ -26,7 +25,7 @@ from stp_core.loop.looper import Looper
 from plenum.common.startable import Status
 from plenum.common.types import NodeDetail, f
 from plenum.common.constants import CLIENT_STACK_SUFFIX, TXN_TYPE, \
-    DOMAIN_LEDGER_ID, NYM, STATE_PROOF
+    DOMAIN_LEDGER_ID
 from plenum.common.util import Seconds, getMaxFailures
 from stp_core.common.util import adict
 from plenum.server import replica
@@ -48,7 +47,6 @@ from plenum.test.testable import spyable
 from plenum.test import waits
 from plenum.common.messages.node_message_factory import node_message_factory
 from plenum.server.replicas import Replicas
-from hashlib import sha256
 
 logger = getlogger()
 
@@ -60,28 +58,19 @@ class TestCoreAuthnr(CoreAuthNr):
 class TestDomainRequestHandler(DomainRequestHandler):
     valid_txn_types = DomainRequestHandler.valid_txn_types.union({'buy', })
 
-    @staticmethod
-    def prepare_buy_for_state(txn):
-        from common.serializers.serialization import domain_state_serializer
-        identifier = txn.get(f.IDENTIFIER.nm)
-        request_id = txn.get(f.REQ_ID.nm)
-        value = domain_state_serializer.serialize({TXN_TYPE: "buy"})
-        key = TestDomainRequestHandler.prepare_buy_key(identifier, request_id)
-        return key, value
-
-    @staticmethod
-    def prepare_buy_key(identifier, request_id):
-        return sha256('{}:{}'.format(identifier, request_id).encode()).digest()
-
     def _updateStateWithSingleTxn(self, txn, isCommitted=False):
         typ = txn.get(TXN_TYPE)
         if typ == 'buy':
-            key, value = self.prepare_buy_for_state(txn)
-            self.state.set(key, value)
+            idr = txn.get(f.IDENTIFIER.nm)
+            rId = txn.get(f.REQ_ID.nm)
+            key = '{}:{}'.format(idr, rId).encode()
+            val = self.stateSerializer.serialize({TXN_TYPE: typ})
+            self.state.set(key, val)
             logger.trace('{} after adding to state, headhash is {}'.
                          format(self, self.state.headHash))
         else:
             super()._updateStateWithSingleTxn(txn, isCommitted=isCommitted)
+
 
 NodeRef = TypeVar('NodeRef', Node, str)
 
@@ -254,8 +243,7 @@ class TestNodeCore(StackedTester):
     def getDomainReqHandler(self):
         return TestDomainRequestHandler(self.domainLedger,
                                         self.states[DOMAIN_LEDGER_ID],
-                                        self.config, self.reqProcessors,
-                                        self.bls_bft.bls_store)
+                                        self.config, self.reqProcessors)
 
     def init_core_authenticator(self):
         state = self.getState(DOMAIN_LEDGER_ID)
@@ -332,16 +320,6 @@ class TestNode(TestNodeCore, Node):
             postAllLedgersCaughtUp=self.allLedgersCaughtUp,
             preCatchupClbk=self.preLedgerCatchUp)
 
-    def sendRepliesToClients(self, committedTxns, ppTime):
-        committedTxns = list(committedTxns)
-        req_handler = self.get_req_handler(DOMAIN_LEDGER_ID)
-        for txn in committedTxns:
-            if txn[TXN_TYPE] == "buy":
-                key, value = req_handler.prepare_buy_for_state(txn)
-                proof = req_handler.make_proof(key)
-                if proof:
-                    txn[STATE_PROOF] = proof
-        super().sendRepliesToClients(committedTxns, ppTime)
 
 elector_spyables = [
     PrimaryElector.discard,
@@ -373,7 +351,7 @@ class TestPrimarySelector(PrimarySelector):
 
 replica_spyables = [
     replica.Replica.sendPrePrepare,
-    replica.Replica._can_process_pre_prepare,
+    replica.Replica.canProcessPrePrepare,
     replica.Replica.canPrepare,
     replica.Replica.validatePrepare,
     replica.Replica.addToPrePrepares,
@@ -388,7 +366,7 @@ replica_spyables = [
     replica.Replica.can_process_since_view_change_in_progress,
     replica.Replica.processThreePhaseMsg,
     replica.Replica.process_requested_pre_prepare,
-    replica.Replica._request_pre_prepare_for_prepare,
+    replica.Replica._request_pre_prepare_if_possible,
     replica.Replica.is_pre_prepare_time_correct,
     replica.Replica.is_pre_prepare_time_acceptable,
     replica.Replica._process_stashed_pre_prepare_for_time_if_possible,
@@ -406,8 +384,8 @@ class TestReplica(replica.Replica):
 
 
 class TestReplicas(Replicas):
-    def _new_replica(self, instance_id: int, is_master: bool, bls_bft: BlsBft):
-        return TestReplica(self._node, instance_id, is_master, bls_bft)
+    def _new_replica(self, instance_id: int, is_master: bool):
+        return TestReplica(self._node, instance_id, is_master)
 
 
 class TestNodeSet(ExitStack):
@@ -548,8 +526,7 @@ monitor_spyables = [Monitor.isMasterThroughputTooLow,
                     Monitor.isMasterReqLatencyTooHigh,
                     Monitor.sendThroughput,
                     Monitor.requestOrdered,
-                    Monitor.reset,
-                    Monitor.warn_has_lot_unordered_requests
+                    Monitor.reset
                     ]
 
 
