@@ -74,6 +74,20 @@ def test_seller_xfer_invalid_outputs(public_minting, looper, txnPoolNodeSet,# no
     with pytest.raises(AssertionError):
         send_xfer(looper, inputs, outputs, client1)
 
+def test_seller_xfer_negative_amount(public_minting, looper, txnPoolNodeSet, # noqa
+                                    client1, seller_token_wallet,
+                                    seller_address, user1_address):
+    """
+    Amount used in outputs equal to the amount held by inputs,
+    but rejected because one of the outputs is negative.
+    """
+    global seller_gets
+    seq_no = public_minting[F.seqNo.name]
+    inputs = [[seller_token_wallet, seller_address, seq_no]]
+    seller_remaining = seller_gets + 10
+    outputs = [[user1_address, -10], [seller_address, seller_remaining]]
+    with pytest.raises(AssertionError):
+        send_xfer(looper, inputs, outputs, client1)
 
 def test_seller_xfer_invalid_amount(public_minting, looper, txnPoolNodeSet, # noqa
                                     client1, seller_token_wallet,
