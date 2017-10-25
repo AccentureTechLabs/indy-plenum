@@ -1,5 +1,4 @@
 import pytest
-
 from plenum.server.plugin.token.wallet import TokenWallet, Address
 
 @pytest.fixture(scope="module")
