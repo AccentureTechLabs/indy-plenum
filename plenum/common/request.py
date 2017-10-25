@@ -2,7 +2,7 @@ from hashlib import sha256
 from typing import Mapping, NamedTuple, Dict
 
 from common.serializers.serialization import serialize_msg_for_signing
-from plenum.common.constants import REQKEY, FORCE
+from plenum.common.constants import REQKEY, FORCE, TXN_TYPE
 from plenum.common.messages.client_request import ClientMessageValidator
 from plenum.common.types import f, OPERATION
 from plenum.common.util import getTimeBasedId
@@ -19,6 +19,7 @@ class Request:
                  operation: Mapping=None,
                  signature: str=None,
                  signatures: Dict[str, str]=None,
+                 protocolVersion: int = None,
                  # Intentionally omitting *args
                  **kwargs):
         self._identifier = identifier
@@ -26,6 +27,7 @@ class Request:
         self.signatures = signatures
         self.reqId = reqId
         self.operation = operation
+        self.protocolVersion = protocolVersion
         self._digest = None
         for nm in PLUGIN_CLIENT_REQUEST_FIELDS:
             if nm in kwargs:
@@ -49,6 +51,8 @@ class Request:
         for nm in PLUGIN_CLIENT_REQUEST_FIELDS:
             if hasattr(self, nm):
                 rv[nm] = getattr(self, nm)
+        if self.protocolVersion is not None:
+            rv[f.PROTOCOL_VERSION.nm] = self.protocolVersion
         return rv
 
     def __eq__(self, other):
@@ -72,11 +76,15 @@ class Request:
         return self.__dict__
 
     def signingState(self, identifier=None):
-        return {
+        # TODO: separate data, metadata and signature, so that we don't need to have this kind of messages
+        dct = {
             f.IDENTIFIER.nm: identifier or self.identifier,
             f.REQ_ID.nm: self.reqId,
             OPERATION: self.operation
         }
+        if self.protocolVersion is not None:
+            dct[f.PROTOCOL_VERSION.nm] = self.protocolVersion
+        return dct
 
     def __setstate__(self, state):
         self.__dict__.update(state)
@@ -94,6 +102,10 @@ class Request:
     def isForced(self):
         force = self.operation.get(FORCE)
         return str(force) == 'True'
+
+    @property
+    def txn_type(self):
+        return self.operation.get(TXN_TYPE)
 
     @property
     def identifier(self):
@@ -133,7 +145,6 @@ class ReqKey(NamedTuple(REQKEY, [f.IDENTIFIER, f.REQ_ID])):
 
 
 class SafeRequest(Request, ClientMessageValidator):
-
     def __init__(self, **kwargs):
         ClientMessageValidator.__init__(self, operation_schema_is_strict=False,
                                         schema_is_strict=False)
