@@ -15,7 +15,7 @@ from typing import List, Union, Dict, Optional, Tuple, Set, Any, \
 
 from common.serializers.serialization import ledger_txn_serializer, \
     state_roots_serializer, proof_nodes_serializer
-from crypto.bls.bls_multi_signature_verifier import MultiSignatureVerifier
+from crypto.bls.bls_crypto import BlsCryptoVerifier
 from ledger.merkle_verifier import MerkleVerifier
 from ledger.util import F, STH
 from plenum.bls.bls_bft_utils import create_full_root_hash
@@ -135,7 +135,7 @@ class Client(Motor,
 
         HasActionQueue.__init__(self)
 
-        self.setF()
+        self.setPoolParams()
 
         stackargs = dict(name=self.stackName,
                          ha=cha,
@@ -203,9 +203,9 @@ class Client(Motor,
     def _bls_register(self):
         return BlsKeyRegisterPoolLedger(self._ledger)
 
-    def _create_multi_sig_verifier(self) -> MultiSignatureVerifier:
+    def _create_multi_sig_verifier(self) -> BlsCryptoVerifier:
         verifier = create_default_bls_crypto_factory()\
-            .create_multi_signature_verifier()
+            .create_bls_crypto_verifier()
         return verifier
 
     def getReqRepStore(self):
@@ -231,12 +231,18 @@ class Client(Motor,
         self.processPoolTxn(txn)
 
     # noinspection PyAttributeOutsideInit
-    def setF(self):
+    def setPoolParams(self):
         nodeCount = len(self.nodeReg)
         self.f = getMaxFailures(nodeCount)
         self.minNodesToConnect = self.f + 1
         self.totalNodes = nodeCount
         self.quorums = Quorums(nodeCount)
+        logger.info(
+            "{} updated its pool parameters: f {}, totalNodes {},"
+            "minNodesToConnect {}, quorums {}".format(
+                self.alias,
+                self.f, self.totalNodes,
+                self.minNodesToConnect, self.quorums))
 
     @staticmethod
     def exists(name, basedirpath):
@@ -288,11 +294,18 @@ class Client(Motor,
                (self.hasAnyConnections and
                (request.txn_type in self._read_only_requests or request.isForced())):
 
-                logger.debug('Client {} sending request {}'
-                             .format(self, request))
-                stat, err_msg = self.send(request)
+                recipients = \
+                    {r.name
+                     for r in self.nodestack.remotes.values()
+                     if self.nodestack.isRemoteConnected(r)}
+
+                logger.debug('Client {} sending request {} to recipients {}'
+                             .format(self, request, recipients))
+
+                stat, err_msg = self.send(request, *recipients)
+
                 if stat:
-                    self.expectingFor(request)
+                    self.expectingFor(request, recipients)
                 else:
                     errs.append(err_msg)
                     logger.debug(
@@ -535,9 +548,9 @@ class Client(Motor,
                                .format(node_name))
                 return False
             public_keys.append(key)
-        return self._multi_sig_verifier.verify(signature,
-                                               full_state_root,
-                                               public_keys)
+        return self._multi_sig_verifier.verify_multi_sig(signature,
+                                                         full_state_root,
+                                                         public_keys)
 
     def validate_proof(self, result):
         """
@@ -588,12 +601,6 @@ class Client(Motor,
         if self._ledger:
             for n in joined:
                 self.sendLedgerStatus(n)
-
-    def replyIfConsensus(self, identifier, reqId: int):
-        replies, errors = self.reqRepStore.getAllReplies(identifier, reqId)
-        r = list(replies.values())[0] if len(replies) > self.f else None
-        e = list(errors.values())[0] if len(errors) > self.f else None
-        return r, e
 
     @property
     def hasSufficientConnections(self):
