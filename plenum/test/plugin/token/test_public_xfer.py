@@ -121,6 +121,23 @@ def test_seller_xfer_invalid_inputs(public_minting, looper, txnPoolNodeSet, # no
         send_xfer(looper, inputs, outputs, client1)
 
 
+#this test breaks the valid tests below, need to find out why
+def test_seller_xfer_decimal_amount(public_minting, looper, txnPoolNodeSet,  # noqa
+                                    client1, seller_token_wallet,
+                                    seller_address, user1_address):
+    """
+        Amount used in outputs equal to the amount held by inputs,
+        but rejected because one of the outputs is a decimal.
+        """
+    global seller_gets
+    seq_no = public_minting[F.seqNo.name]
+    inputs = [[seller_token_wallet, seller_address, seq_no]]
+    seller_remaining = seller_gets - 0.5
+    outputs = [[user1_address, 0.5], [seller_address, seller_remaining]]
+    with pytest.raises(AssertionError):
+        send_xfer(looper, inputs, outputs, client1)
+#ask Lovesh about Satoshis (for decimal transactions)
+
 @pytest.fixture(scope='module')     # noqa
 def valid_xfer_txn_done(public_minting, looper, txnPoolNodeSet, client1,
                         seller_token_wallet, seller_address, user1_address):
