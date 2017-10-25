@@ -10,7 +10,7 @@ from typing import Dict, Tuple, List
 
 from plenum.common.constants import TXN_TYPE, NODE, TARGET_NYM, DATA, ALIAS, \
     NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT, VERKEY, SERVICES, \
-    VALIDATOR, CLIENT_STACK_SUFFIX, POOL_LEDGER_ID, DOMAIN_LEDGER_ID
+    VALIDATOR, CLIENT_STACK_SUFFIX, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, BLS_KEY
 from plenum.common.exceptions import UnsupportedOperation, \
     InvalidClientRequest
 from plenum.common.request import Request
@@ -54,7 +54,10 @@ class PoolManager:
         # Return the rank of the node where rank is defined by the order in
         # which node was added to the pool or on the alphabetical order of name
         # if using RegistryPoolManager
-        return haystack_ids.index(needle_id)
+        try:
+            return haystack_ids.index(needle_id)
+        except ValueError:
+            return None
 
     @property
     @abstractmethod
@@ -63,24 +66,28 @@ class PoolManager:
         """
 
     @abstractmethod
-    def get_rank_of(self, node_id) -> int:
-        """
+    def get_rank_of(self, node_id) -> Optional[int]:
+        """Return node rank among active pool validators by id
+
+        :param node_id: node's id
+        :return: rank of the node or None if not found
         """
 
     @property
     def rank(self) -> Optional[int]:
         # Nodes have a total order defined in them, rank is the node's
         # position in that order
-        if self._rank is None:
-            self._rank = self.get_rank_of(self.id)
-        return self._rank
+        return self.get_rank_of(self.id)
 
     @abstractmethod
-    def get_name_by_rank(self, rank):
+    def get_name_by_rank(self, rank) -> Optional[str]:
         # Needed for communicating primary name to others and also nodeReg
         # uses node names (alias) and not ids
         # TODO: Should move to using node ids and not node names (alias)
-        """
+        """Return node name (alias) by rank among active pool validators
+
+        :param rank: rank of the node
+        :return: name of the node or None if not found
         """
 
 
@@ -106,15 +113,17 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         self.basedirpath = node.basedirpath
         self._ledger = None
         self._id = None
-        self._rank = None
+
         TxnStackManager.__init__(
             self, self.name, self.basedirpath, isNode=True)
         self.state = self.loadState()
         self.reqHandler = self.getPoolReqHandler()
         self.initPoolState()
+        self._load_nodes_order_from_ledger()
         self.nstack, self.cstack, self.nodeReg, self.cliNodeReg = \
             self.getStackParamsAndNodeReg(self.name, self.basedirpath, ha=ha,
                                           cliname=cliname, cliha=cliha)
+
         self._dataFieldsValidators = (
             (NODE_IP, self._isIpAddressValid),
             (CLIENT_IP, self._isIpAddressValid),
@@ -208,6 +217,8 @@ class TxnPoolManager(PoolManager, TxnStackManager):
             nodeName = txn[DATA][ALIAS]
             nodeNym = txn[TARGET_NYM]
 
+            self._order_node(nodeNym, nodeName)
+
             def _updateNode(txn):
                 if {NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT}. \
                         intersection(set(txn[DATA].keys())):
@@ -216,6 +227,8 @@ class TxnPoolManager(PoolManager, TxnStackManager):
                     self.nodeKeysChanged(txn)
                 if SERVICES in txn[DATA]:
                     self.nodeServicesChanged(txn)
+                if BLS_KEY in txn[DATA]:
+                    self.node_blskey_changed(txn)
 
             if nodeName in self.nodeReg:
                 # The node was already part of the pool so update
@@ -243,7 +256,7 @@ class TxnPoolManager(PoolManager, TxnStackManager):
                          format(self.name))
             return
         self.connectNewRemote(txn, nodeName, self.node)
-        self.node.newNodeJoined(txn)
+        self.node.nodeJoined(txn)
 
     def node_about_to_be_disconnected(self, nodeName):
         if self.node.master_primary_name == nodeName:
@@ -304,6 +317,7 @@ class TxnPoolManager(PoolManager, TxnStackManager):
                     # If validator service is enabled
                     self.updateNodeTxns(nodeInfo, txn)
                     self.connectNewRemote(nodeInfo, nodeName, self.node)
+                    self.node.nodeJoined(txn)
 
                 if VALIDATOR in oldServices.difference(newServices):
                     # If validator service is disabled
@@ -320,6 +334,14 @@ class TxnPoolManager(PoolManager, TxnStackManager):
 
                     self.node.nodeLeft(txn)
                     self.node_about_to_be_disconnected(nodeName)
+
+    def node_blskey_changed(self, txn):
+        # if BLS key changes for my Node, then re-init BLS crypto signer with new keys
+        node_nym = txn[TARGET_NYM]
+        node_name = self.getNodeName(node_nym)
+        if node_name == self.name:
+            bls_key = txn[DATA][BLS_KEY]
+            self.node.update_bls_key(bls_key)
 
     def getNodeName(self, nym):
         # Assuming ALIAS does not change
@@ -370,33 +392,57 @@ class TxnPoolManager(PoolManager, TxnStackManager):
                     self._id = txn[TARGET_NYM]
         return self._id
 
-    @property
-    def node_ids_in_ordered_by_rank(self) -> List:
-        ids = OrderedDict()
+    def _load_nodes_order_from_ledger(self):
+        self._ordered_node_ids = OrderedDict()
         for _, txn in self.ledger.getAllTxn():
-            ids[txn[TARGET_NYM]] = True
-        return list(ids.keys())
+            if txn[TXN_TYPE] == NODE:
+                self._order_node(txn[TARGET_NYM], txn[DATA][ALIAS])
+
+    def _order_node(self, nodeNym, nodeName):
+        curName = self._ordered_node_ids.get(nodeNym)
+
+        if curName is None:
+            logger.info("{} node {} ordered, NYM {}".format(
+                        self.name, nodeName, nodeNym))
+            self._ordered_node_ids[nodeNym] = nodeName
+        elif curName != nodeName:
+            msg = ("{} is trying to order already ordered node {} ({}) "
+                   "with other alias {}".format(self.name, curName, nodeNym, nodeName))
+            logger.warning(msg)
+            assert False, msg
+
+    @property
+    def node_ids_ordered_by_rank(self) -> List:
+        return [nym for nym, name in self._ordered_node_ids.items()
+                if name in self.nodeReg]
 
     def get_rank_of(self, node_id) -> Optional[int]:
         if self.id is None:
             # This can happen if a non-genesis node starts
             return None
-        return self._get_rank(node_id, self.node_ids_in_ordered_by_rank)
+        return self._get_rank(node_id, self.node_ids_ordered_by_rank)
 
-    def get_name_by_rank(self, rank):
-        # This is expensive but only required while start or view change
-        id = self.node_ids_in_ordered_by_rank[rank]
-        # We don't allow changing ALIAS
-        for _, txn in self.ledger.getAllTxn():
-            if txn[TARGET_NYM] == id and DATA in txn and ALIAS in txn[DATA]:
-                return txn[DATA][ALIAS]
+    def get_name_by_rank(self, rank) -> Optional[str]:
+        try:
+            nym = self.node_ids_ordered_by_rank[rank]
+        except IndexError:
+            return None
+        else:
+            return self._ordered_node_ids[nym]
+
+    def get_nym_by_name(self, node_name) -> Optional[str]:
+        for nym, name in self._ordered_node_ids.items():
+            if name == node_name:
+                return nym
+        return None
 
 
 class RegistryPoolManager(PoolManager):
     # This is the old way of managing the pool nodes information and
     # should be deprecated.
     def __init__(self, name, basedirpath, nodeRegistry, ha, cliname, cliha):
-        self._rank = None
+        self._ordered_node_names = None
+
         self.nstack, self.cstack, self.nodeReg, self.cliNodeReg = \
             self.getStackParamsAndNodeReg(name=name, basedirpath=basedirpath,
                                           nodeRegistry=nodeRegistry, ha=ha,
@@ -492,8 +538,12 @@ class RegistryPoolManager(PoolManager):
     def node_names_ordered_by_rank(self) -> List:
         return sorted(self.nodeReg.keys())
 
-    def get_rank_of(self, node_id) -> int:
+    def get_rank_of(self, node_id) -> Optional[int]:
+        # TODO node_id here has got another meaning
         return self._get_rank(node_id, self.node_names_ordered_by_rank)
 
-    def get_name_by_rank(self, rank):
-        return self.node_names_ordered_by_rank[rank]
+    def get_name_by_rank(self, rank) -> Optional[str]:
+        try:
+            return self.node_names_ordered_by_rank[rank]
+        except IndexError:
+            return None

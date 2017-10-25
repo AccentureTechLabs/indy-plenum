@@ -15,4 +15,4 @@ def test_fees(fees_set, looper, steward1, stewardWallet,    # noqa
     req = user1_token_wallet.add_fees_to_request(req, fee_amount=fee_amount,
                                                  address=user1_address)
     client1.submitReqs(req)
-    waitForSufficientRepliesForRequests(looper, client1, requests=[req], fVal=1)
+    waitForSufficientRepliesForRequests(looper, client1, requests=[req])

@@ -24,7 +24,7 @@ def public_mint_request(trustees, outputs, sender_client):
 def send_public_mint(looper, trustees, outputs, sender_client):
     request = public_mint_request(trustees, outputs, sender_client)
     waitForSufficientRepliesForRequests(looper, sender_client,
-                                        requests=[request], fVal=1)
+                                        requests=[request])
     return request
 
 
@@ -54,7 +54,7 @@ def xfer_request(inputs, outputs, sender_client, extra_data=None):
 def send_xfer(looper, inputs, outputs, sender_client, extra_data=None):
     request = xfer_request(inputs, outputs, sender_client, extra_data)
     waitForSufficientRepliesForRequests(looper, sender_client,
-                                        requests=[request], fVal=1)
+                                        requests=[request])
     return request
 
 
@@ -79,5 +79,5 @@ def get_utxo_request(address, sender_wallet, sender_client):
 def send_get_utxo(looper, address, sender_wallet, sender_client):
     request = get_utxo_request(address, sender_wallet, sender_client)
     waitForSufficientRepliesForRequests(looper, sender_client,
-                                        requests=[request], fVal=1)
+                                        requests=[request])
     return request

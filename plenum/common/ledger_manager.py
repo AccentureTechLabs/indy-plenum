@@ -256,7 +256,7 @@ class LedgerManager(HasActionQueue):
             self.discard(status, reason="Received negative sequence number "
                          "from {}".format(frm),
                          logMethod=logger.warning)
-
+            return
         ledgerId = getattr(status, f.LEDGER_ID.nm)
 
         # If this is a node's ledger manager and sender of this ledger status
@@ -324,6 +324,9 @@ class LedgerManager(HasActionQueue):
                     self.catchupCompleted(ledgerId, key)
                 else:
                     self.catchupCompleted(ledgerId)
+            else:
+                # Ledger was already synced
+                self.mark_ledger_synced(ledgerId)
 
     @staticmethod
     def has_ledger_status_quorum(leger_status_num, total_nodes):
@@ -441,14 +444,24 @@ class LedgerManager(HasActionQueue):
                      .format(frm, end - start + 1, start, end))
         logger.debug("{} generating consistency proof: {} from {}".
                      format(self, end, req.catchupTill))
-        consProof = [Ledger.hashToStr(p) for p in
-                     ledger.tree.consistency_proof(end, req.catchupTill)]
-
+        cons_proof = self._make_consistency_proof(ledger, end, req.catchupTill)
         txns = {}
         for seq_no, txn in ledger.getAllTxn(start, end):
             txns[seq_no] = self.owner.update_txn_with_extra_data(txn)
-        self.sendTo(msg=CatchupRep(getattr(req, f.LEDGER_ID.nm), txns,
-                                   consProof), to=frm)
+
+        rep = CatchupRep(getattr(req, f.LEDGER_ID.nm), txns, cons_proof)
+        message_splitter = self._make_split_for_catchup_rep(ledger, req.catchupTill)
+        self.sendTo(msg=rep,
+                    to=frm,
+                    message_splitter=message_splitter)
+
+    def _make_consistency_proof(self, ledger, end, catchup_till):
+        # TODO: make catchup_till optional
+        # if catchup_till is None:
+        #     catchup_till = ledger.size
+        proof = ledger.tree.consistency_proof(end, catchup_till)
+        string_proof = [Ledger.hashToStr(p) for p in proof]
+        return string_proof
 
     def processCatchupRep(self, rep: CatchupRep, frm: str):
         logger.debug("{} received catchup reply from {}: {}".
@@ -594,8 +607,13 @@ class LedgerManager(HasActionQueue):
                                 tempTree.root_hash, Ledger.strToHash(finalMTH),
                                 [Ledger.strToHash(p) for p in proof]))
             verified = verifier.verify_tree_consistency(
-                tempTree.tree_size, finalSize, tempTree.root_hash, Ledger.strToHash(finalMTH), [
-                    Ledger.strToHash(p) for p in proof])
+                tempTree.tree_size,
+                finalSize,
+                tempTree.root_hash,
+                Ledger.strToHash(finalMTH),
+                [Ledger.strToHash(p) for p in proof]
+            )
+
         except Exception as ex:
             logger.info("{} could not verify catchup reply {} since {}".
                         format(self, catchupReply, ex))
@@ -828,22 +846,25 @@ class LedgerManager(HasActionQueue):
                              0.1 * batchSize)
 
     def catchupCompleted(self, ledgerId: int, last_3PC: Tuple=(0, 0)):
+        if ledgerId not in self.ledgerRegistry:
+            logger.error("{}{} called catchup completed for ledger {}".
+                         format(CATCH_UP_PREFIX, self, ledgerId))
+            return
+
         # Since multiple ledger will be caught up and catchups might happen
         # multiple times for a single ledger, the largest seen
         # ppSeqNo needs to be known.
         if compare_3PC_keys(self.last_caught_up_3PC, last_3PC) > 0:
             self.last_caught_up_3PC = last_3PC
 
-        if ledgerId not in self.ledgerRegistry:
-            logger.error("{}{} called catchup completed for ledger {}".
-                         format(CATCH_UP_PREFIX, self, ledgerId))
-            return
+        self.mark_ledger_synced(ledgerId)
 
-        ledgerInfo = self.getLedgerInfoByType(ledgerId)
+    def mark_ledger_synced(self, ledger_id):
+        ledgerInfo = self.getLedgerInfoByType(ledger_id)
         ledgerInfo.done_syncing()
         logger.info("{}{} completed catching up ledger {},"
                     " caught up {} in total"
-                    .format(CATCH_UP_PREFIX, self, ledgerId,
+                    .format(CATCH_UP_PREFIX, self, ledger_id,
                             ledgerInfo.num_txns_caught_up),
                     extra={'cli': True})
 
@@ -1044,12 +1065,13 @@ class LedgerManager(HasActionQueue):
         logger.error("{}{} cannot find remote with name {}"
                      .format(CONNECTION_PREFIX, self, remoteName))
 
-    def sendTo(self, msg: Any, to: str):
+    def sendTo(self, msg: Any, to: str, message_splitter=None):
         stack = self.getStack(to)
+
         # If the message is being sent by a node
         if self.ownedByNode:
             if stack == self.nodestack:
-                self.sendToNodes(msg, [to, ])
+                self.sendToNodes(msg, [to, ], message_splitter)
             if stack == self.clientstack:
                 self.owner.transmitToClient(msg, to)
         # If the message is being sent by a client
@@ -1086,3 +1108,25 @@ class LedgerManager(HasActionQueue):
     def nodes_to_request_txns_from(self):
         return [nm for nm in self.nodestack.registry
                 if nm not in self.blacklistedNodes and nm != self.nodestack.name]
+
+    def _make_split_for_catchup_rep(self, ledger, initial_seq_no):
+
+        def _split(message):
+            txns = list(message.txns.items())
+            divider = len(message.txns) // 2
+            left = txns[:divider]
+            left_last_seq_no = left[-1][0]
+            right = txns[divider:]
+            right_last_seq_no = right[-1][0]
+            left_cons_proof = self._make_consistency_proof(ledger,
+                                                           left_last_seq_no,
+                                                           initial_seq_no)
+            right_cons_proof = self._make_consistency_proof(ledger,
+                                                            right_last_seq_no,
+                                                            initial_seq_no)
+            ledger_id = getattr(message, f.LEDGER_ID.nm)
+            left_rep = CatchupRep(ledger_id, dict(left), left_cons_proof)
+            right_rep = CatchupRep(ledger_id, dict(right), right_cons_proof)
+            return left_rep, right_rep
+
+        return _split

@@ -1,7 +1,9 @@
 import types
 
+from plenum.common.constants import CURRENT_PROTOCOL_VERSION
 from plenum.test.cli.helper import checkRequest
 from plenum.test.helper import waitForSufficientRepliesForRequests
+from plenum.common.request import Request
 
 
 def testLogFiltering(cli, validNodeNames, createAllNodes):
@@ -19,7 +21,10 @@ def testLogFiltering(cli, validNodeNames, createAllNodes):
     cli.enterCmd('client {} send {}'.format(client.name, msg))
 
     lastRequestId = client.reqRepStore.lastReqId
+    request = Request(identifier=wallet.defaultId,
+                      reqId=lastRequestId,
+                      protocolVersion=CURRENT_PROTOCOL_VERSION)
     waitForSufficientRepliesForRequests(cli.looper, client,
-                                        requestIds=[lastRequestId])
+                                        requests=[request])
 
     assert "got msg from node" not in cli.lastCmdOutput
