@@ -5,7 +5,7 @@ from plenum.server.plugin.token.constants import MINT_PUBLIC, OUTPUTS, XFER_PUBL
 from plenum.test.helper import waitForSufficientRepliesForRequests
 
 
-def public_mint_request(trustees, outputs, sender_client):
+def public_mint_request(trustees, outputs):
     signatures = {}
     op = {
         TXN_TYPE: MINT_PUBLIC,
@@ -17,12 +17,12 @@ def public_mint_request(trustees, outputs, sender_client):
     for wallet in trustees[1:]:
         signatures[wallet.defaultId] = wallet.do_multi_sig_on_req(
             request, identifier=wallet.defaultId)
-    sender_client.submitReqs(request)
     return request
 
 
 def send_public_mint(looper, trustees, outputs, sender_client):
-    request = public_mint_request(trustees, outputs, sender_client)
+    request = public_mint_request(trustees, outputs)
+    sender_client.submitReqs(request)
     waitForSufficientRepliesForRequests(looper, sender_client,
                                         requests=[request])
     return request
@@ -37,7 +37,7 @@ def do_public_minting(looper, trustees, sender_client, total_mint,
     return result
 
 
-def xfer_request(inputs, outputs, sender_client, extra_data=None):
+def xfer_request(inputs, outputs, extra_data=None):
     payload = {
         TXN_TYPE: XFER_PUBLIC,
         OUTPUTS: outputs,
@@ -47,12 +47,12 @@ def xfer_request(inputs, outputs, sender_client, extra_data=None):
     request = wallet.sign_using_output(address, seq_no, op=payload)
     for wallet, address, seq_no in inputs[1:]:
         wallet.sign_using_output(address, seq_no, request=request)
-    sender_client.submitReqs(request)
     return request
 
 
 def send_xfer(looper, inputs, outputs, sender_client, extra_data=None):
-    request = xfer_request(inputs, outputs, sender_client, extra_data)
+    request = xfer_request(inputs, outputs, extra_data)
+    sender_client.submitReqs(request)
     waitForSufficientRepliesForRequests(looper, sender_client,
                                         requests=[request])
     return request

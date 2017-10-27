@@ -36,15 +36,59 @@ def test_multiple_inputs_with_1_incorrect_input_sig(tokens_distributed, # noqa
                                                     seller_address,
                                                     user1_token_wallet,
                                                     user2_token_wallet,
-                                                    user3_token_wallet):
-
+                                                    user3_token_wallet,
+                                                    seller_token_wallet):
+    # Multiple inputs are used in a transaction but one of the inputs
+    # has incorrect signature
     inputs, outputs = inputs_outputs(user1_token_wallet, user2_token_wallet,
                                      user3_token_wallet,
                                      output_addr=seller_address)
 
-    request = xfer_request(inputs, outputs, client1)
+    request = xfer_request(inputs, outputs)
     sigs = getattr(request, f.SIGS.nm)
+    # Change signature for 2nd input, set it same as the 1st input's signature
     sigs[request.operation[INPUTS][1][0]] = sigs[request.operation[INPUTS][0][0]]
+    client1.submitReqs(request)
+    with pytest.raises(AssertionError):
+        waitForSufficientRepliesForRequests(looper, client1,
+                                            requests=[request])
+
+
+def test_multiple_inputs_with_1_missing_sig(tokens_distributed, # noqa
+                                            looper,
+                                            client1,
+                                            seller_address,
+                                            user1_token_wallet,
+                                            user2_token_wallet,
+                                            user3_token_wallet,
+                                            seller_token_wallet):
+    # Multiple inputs are used in a transaction but one of the inputs's
+    # signature is missing, 2 cases are checked, in 1st case one of the input's
+    # signature is removed from the request so there are 3 inputs but only 2
+    # signatures, in 2nd case one of the inputs signature is still not included
+    #  but a different input's signature is added which is not being spent in
+    # this txn, so there are 3 inputs and 3 signtures.
+    inputs, outputs = inputs_outputs(user1_token_wallet, user2_token_wallet,
+                                     user3_token_wallet,
+                                     output_addr=seller_address)
+
+    # Remove signature for 2nd input
+    request = xfer_request(inputs, outputs)
+    sigs = getattr(request, f.SIGS.nm)
+    del sigs[request.operation[INPUTS][1][0]]
+    assert len(sigs) == (len(inputs) - 1)
+    client1.submitReqs(request)
+    with pytest.raises(AssertionError):
+        waitForSufficientRepliesForRequests(looper, client1,
+                                            requests=[request])
+
+    # Add signature from an address not present in input
+    seq_no, _ = next(iter(
+        seller_token_wallet.get_all_utxos(seller_address).values()))[0]
+    seller_token_wallet.sign_using_output(seller_address, seq_no,
+                                          request=request)
+    assert len(sigs) == len(inputs)
+    client1.submitReqs(request)
     with pytest.raises(AssertionError):
         waitForSufficientRepliesForRequests(looper, client1,
                                             requests=[request])

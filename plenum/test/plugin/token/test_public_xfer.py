@@ -165,8 +165,10 @@ def test_seller_xfer_double_spend_attempt(looper, txnPoolNodeSet, client1,  # no
     outputs1 = [[user1_address, user1_gets], [seller_address, seller_remaining]]
     seller_remaining -= user2_gets
     outputs2 = [[user2_address, user2_gets], [seller_address, seller_remaining]]
-    xfer_request(inputs, outputs1, client1)
-    xfer_request(inputs, outputs2, client1)
+    r1 = xfer_request(inputs, outputs1)
+    client1.submitReqs(r1)
+    r2 = xfer_request(inputs, outputs2)
+    client1.submitReqs(r2)
     # So that both requests are sent simultaneously
     looper.runFor(.2)
     # Both requests should not be successful, one and only one should be
