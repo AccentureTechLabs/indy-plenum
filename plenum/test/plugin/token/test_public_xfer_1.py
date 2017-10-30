@@ -11,7 +11,7 @@ from plenum.test.plugin.token.helper import xfer_request, \
     inputs_outputs, send_xfer
 from plenum.test.pool_transactions.conftest import clientAndWallet1, \
     client1, wallet1, client1Connected, looper
-from plenum.test.plugin.token.test_public_xfer import public_minting, \
+from plenum.test.plugin.token.test_public_xfer_2 import public_minting, \
     user1_address, user1_token_wallet, user2_address, user2_token_wallet, \
     user3_address, user3_token_wallet
 
