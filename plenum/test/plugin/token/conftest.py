@@ -1,5 +1,6 @@
 import pytest
 
+from ledger.util import F
 from plenum.client.wallet import Wallet
 from plenum.common.constants import DOMAIN_LEDGER_ID
 from plenum.common.signer_simple import SimpleSigner
@@ -87,9 +88,12 @@ def tokens_distributed(public_minting, seller_token_wallet, seller_address,
                [user2_address, each_user_share],
                [user3_address, each_user_share],
                [seller_address, total_amount % 3]]
-    send_xfer(looper, inputs, outputs, client1)
+    req = send_xfer(looper, inputs, outputs, client1)
     for w, a in [(user1_token_wallet, user1_address),
                  (user2_token_wallet, user2_address),
                  (user3_token_wallet, user3_address)]:
         register_token_wallet_with_client(client1, w)
         send_get_utxo(looper, a, wallet1, client1)
+
+    reply, _ = client1.getReply(req.identifier, req.reqId)
+    return reply[F.seqNo.name]

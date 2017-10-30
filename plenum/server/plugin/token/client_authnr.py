@@ -4,6 +4,7 @@ from base58 import b58decode
 
 from common.serializers.serialization import serialize_msg_for_signing
 from plenum.common.constants import TXN_TYPE
+from plenum.common.exceptions import InsufficientCorrectSignatures
 from plenum.common.types import PLUGIN_TYPE_AUTHENTICATOR, OPERATION
 from plenum.common.verifier import Verifier, DidVerifier
 from plenum.server.client_authn import CoreAuthNr
@@ -35,7 +36,14 @@ class TokenAuthNr(CoreAuthNr):
                                         verifier=verifier)
         if req_data[OPERATION][TXN_TYPE] == XFER_PUBLIC:
             verifier = verifier or AddressSigVerifier
-            return super().authenticate(req_data, verifier=verifier)
+            correct_signers = super().authenticate(req_data, verifier=verifier)
+            input_addrs = {addr for addr, _ in req_data[OPERATION][INPUTS]}
+            missing_sigs_by = input_addrs.difference(set(correct_signers))
+            # All inputs should have signatures present
+            if missing_sigs_by:
+                raise InsufficientCorrectSignatures(len(missing_sigs_by),
+                                                    len(input_addrs))
+            return correct_signers
 
     def serializeForSig(self, msg, identifier=None, topLevelKeysToIgnore=None):
         if msg[OPERATION][TXN_TYPE] == MINT_PUBLIC:
