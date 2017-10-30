@@ -122,7 +122,6 @@ def test_seller_xfer_invalid_inputs(public_minting, looper, txnPoolNodeSet, # no
 
 
 
-#ask Lovesh about Satoshis (for decimal transactions)
 
 @pytest.fixture(scope='module')     # noqa
 def valid_xfer_txn_done(public_minting, looper, txnPoolNodeSet, client1,
