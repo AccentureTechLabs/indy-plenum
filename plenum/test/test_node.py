@@ -49,6 +49,7 @@ from plenum.test import waits
 from plenum.common.messages.node_message_factory import node_message_factory
 from plenum.server.replicas import Replicas
 from hashlib import sha256
+from plenum.common.messages.node_messages import Reply
 
 logger = getlogger()
 
@@ -64,14 +65,14 @@ class TestDomainRequestHandler(DomainRequestHandler):
     def prepare_buy_for_state(txn):
         from common.serializers.serialization import domain_state_serializer
         identifier = txn.get(f.IDENTIFIER.nm)
-        request_id = txn.get(f.REQ_ID.nm)
-        value = domain_state_serializer.serialize({TXN_TYPE: "buy"})
-        key = TestDomainRequestHandler.prepare_buy_key(identifier, request_id)
+        req_id = txn.get(f.REQ_ID.nm)
+        value = domain_state_serializer.serialize({"amount": txn['amount']})
+        key = TestDomainRequestHandler.prepare_buy_key(identifier, req_id)
         return key, value
 
     @staticmethod
-    def prepare_buy_key(identifier, request_id):
-        return sha256('{}:{}'.format(identifier, request_id).encode()).digest()
+    def prepare_buy_key(identifier, req_id):
+        return sha256('{}{}:buy'.format(identifier, req_id).encode()).digest()
 
     def _updateStateWithSingleTxn(self, txn, isCommitted=False):
         typ = txn.get(TXN_TYPE)
@@ -82,6 +83,7 @@ class TestDomainRequestHandler(DomainRequestHandler):
                          format(self, self.state.headHash))
         else:
             super()._updateStateWithSingleTxn(txn, isCommitted=isCommitted)
+
 
 NodeRef = TypeVar('NodeRef', Node, str)
 
@@ -261,10 +263,29 @@ class TestNodeCore(StackedTester):
         state = self.getState(DOMAIN_LEDGER_ID)
         return TestCoreAuthnr(state=state)
 
+    def processRequest(self, request, frm):
+        if request.operation[TXN_TYPE] == 'get_buy':
+            self.send_ack_to_client(request.key, frm)
+
+            identifier = request.identifier
+            req_id = request.identifier
+            buy_key = self.reqHandler.prepare_buy_key(identifier, req_id)
+            result = self.reqHandler.state.get(buy_key)
+
+            res = {
+                f.IDENTIFIER.nm: identifier,
+                f.REQ_ID.nm: req_id,
+                "buy": result
+            }
+
+            self.transmitToClient(Reply(res), frm)
+        else:
+            super().processRequest(request, frm)
+
 
 node_spyables = [Node.handleOneNodeMsg,
                  Node.handleInvalidClientMsg,
-                 Node.processRequest,
+                 Node.processRequest.__name__,
                  Node.processOrdered,
                  Node.postToClientInBox,
                  Node.postToNodeInBox,

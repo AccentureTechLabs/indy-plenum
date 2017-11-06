@@ -183,7 +183,7 @@ class DomainRequestHandler(RequestHandler):
 
         return {
             ROOT_HASH: encoded_root_hash,
-            MULTI_SIGNATURE: multi_sig.as_dict(),  # [["participants"], ["signatures"]]
+            MULTI_SIGNATURE: multi_sig.as_dict(),
             PROOF_NODES: encoded_proof
         }
 
