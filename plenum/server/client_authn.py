@@ -252,7 +252,8 @@ class CoreAuthMixin:
         """
         to_serialize = {k: v for k, v in req_data.items()
                         if k not in self.excluded_from_signing}
-        # if f.SIGS.nm not in req_data or req_data[f.SIGS.nm] is None:
+        if req_data.get(f.SIG.nm) is None and req_data.get(f.SIGS.nm) is None:
+            raise MissingSignature
         if req_data.get(f.IDENTIFIER.nm) and req_data.get(f.SIG.nm):
             try:
                 # if not identifier:

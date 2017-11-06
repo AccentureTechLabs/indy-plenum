@@ -23,6 +23,7 @@ def test_trustee_invalid_minting(looper, txnPoolNodeSet, client1, # noqa
     with pytest.raises(AssertionError):
         send_public_mint(looper, trustee_wallets, outputs, client1)
 
+
 #What about trust anchors, TGB, do those fail as well?
 def test_non_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
                                wallet1, client1Connected, SF_address,
@@ -38,6 +39,7 @@ def test_non_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
     steward_wallets = build_wallets_from_data(steward_data)
     with pytest.raises(AssertionError):
         send_public_mint(looper, steward_wallets, outputs, client1)
+
 
 #where are the trustee signatures coming from? How is the trustee wallet created here?
 #who can set the number of trustees needed, where is that value configured?
