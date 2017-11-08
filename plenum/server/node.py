@@ -27,15 +27,17 @@ from plenum.common.constants import openTxns, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, 
     OP_FIELD_NAME, CATCH_UP_PREFIX, NYM, \
     POOL_TXN_TYPES, GET_TXN, DATA, MONITORING_PREFIX, TXN_TIME, VERKEY, \
     TARGET_NYM, ROLE, STEWARD, TRUSTEE, ALIAS, \
-    NODE_IP, BLS_PREFIX, NODE_HOOKS, PRE_STATIC_VALIDATION, POST_STATIC_VALIDATION, \
+    NODE_IP, BLS_PREFIX, NODE_HOOKS, PRE_STATIC_VALIDATION, \
+    POST_STATIC_VALIDATION, \
     PRE_DYNAMIC_VALIDATION, POST_DYNAMIC_VALIDATION, PRE_REQUEST_APPLICATION, \
     POST_REQUEST_APPLICATION, PRE_REQUEST_COMMIT, POST_REQUEST_COMMIT, \
-    CONFIG_LEDGER_ID
+    CONFIG_LEDGER_ID, PRE_SIG_VERIFICATION, POST_SIG_VERIFICATION
 from plenum.common.exceptions import SuspiciousNode, SuspiciousClient, \
     MissingNodeOp, InvalidNodeOp, InvalidNodeMsg, InvalidClientMsgType, \
     InvalidClientRequest, BaseExc, \
     InvalidClientMessageException, KeysNotFoundException as REx, BlowUp
 from plenum.common.has_file_storage import HasFileStorage
+from plenum.common.hook_manager import HookManager
 from plenum.common.keygen_utils import areKeysSetup
 from plenum.common.ledger import Ledger
 from plenum.common.ledger_manager import LedgerManager
@@ -103,7 +105,7 @@ logger = getlogger()
 
 
 class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
-           HasPoolManager, PluginLoaderHelper, MessageReqProcessor):
+           HasPoolManager, PluginLoaderHelper, MessageReqProcessor, HookManager):
     """
     A node in a plenum system.
     """
@@ -257,8 +259,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
                                nodestack=self.nodestack,
                                blacklister=self.nodeBlacklister,
                                nodeInfo=self.nodeInfo,
-                               notifierEventTriggeringConfig=
-                               self.config.notifierEventTriggeringConfig,
+                               notifierEventTriggeringConfig=self.config.notifierEventTriggeringConfig,
                                pluginPaths=pluginPaths,
                                notifierEventsEnabled=
                                self.config.SpikeEventsEnabled)
@@ -419,8 +420,11 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
 
         self.setup_config()
 
-        self.hooks = {}     # type: Dict[int, List[Callable]]
-        self.init_hooks()
+        HookManager.__init__(self, NODE_HOOKS)
+
+        # self.hooks = {}     # type: Dict[int, List[Callable]]
+        # self.init_hooks()
+
 
     def create_replicas(self) -> Replicas:
         return Replicas(self, self.monitor)
@@ -481,18 +485,6 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
     @property
     def configLedgerStatus(self):
         return self.build_ledger_status(CONFIG_LEDGER_ID)
-
-    def init_hooks(self):
-        for hook_id in NODE_HOOKS:
-            self.hooks[hook_id] = []
-
-    def register_hook(self, hook_id, hook: Callable):
-        assert hook_id in self.hooks
-        self.hooks[hook_id].append(hook)
-
-    def execute_hook(self, hook_id, *args, **kwargs):
-        for hook in self.hooks.get(hook_id, []):
-            hook(*args, **kwargs)
 
     def reject_client_msg_handler(self, reason, frm):
         self.transmitToClient(Reject("", "", reason), frm)
@@ -648,8 +640,8 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         This is usually an implementation of Ledger
         """
         if self.config.primaryStorage is None:
-            # TODO: add a place for initialization of all ledgers, so it's clear what ledgers we have,
-            # and how they are initialized
+            # TODO: add a place for initialization of all ledgers, so it's
+            # clear what ledgers we have and how they are initialized
             genesis_txn_initiator = GenesisTxnInitiatorFromFile(
                 self.basedirpath, self.config.domainTransactionsFile)
             return Ledger(
@@ -1574,7 +1566,9 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             self.doStaticValidation(cMsg)
 
         if self.isSignatureVerificationNeeded(msg):
+            self.execute_hook(PRE_SIG_VERIFICATION, cMsg)
             self.verifySignature(cMsg)
+            self.execute_hook(POST_SIG_VERIFICATION, cMsg)
             # Suspicions should only be raised when lot of sig failures are
             # observed
             # try:
@@ -1861,11 +1855,9 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
             logger.debug("{} not sending ledger {} status to {} as it is null"
                          .format(self, ledgerId, nodeName))
 
-    def pre_static_validation(self, request):
-        pass
-
     def doStaticValidation(self, request: Request):
-        identifier, req_id, operation = request.identifier, request.reqId, request.operation
+        identifier, req_id, operation = request.identifier, request.reqId, \
+                                        request.operation
         if TXN_TYPE not in operation:
             raise InvalidClientRequest(identifier, req_id)
 
@@ -1908,10 +1900,14 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         Apply request to appropriate ledger and state. `cons_time` is the
         UTC epoch at which consensus was reached.
         """
-        self.execute_hook(PRE_REQUEST_APPLICATION, request=request)
+        self.execute_hook(PRE_REQUEST_APPLICATION, request=request,
+                          cons_time=cons_time)
         req_handler = self.get_req_handler(txn_type=request.operation[TXN_TYPE])
-        req_handler.apply(request, cons_time)
-        self.execute_hook(POST_REQUEST_APPLICATION, request=request)
+        seq_no, txn = req_handler.apply(request, cons_time)
+        ledger_id = self.ledgerIdForRequest(request)
+        self.execute_hook(POST_REQUEST_APPLICATION, request=request,
+                          cons_time=cons_time, ledger_id=ledger_id,
+                          seq_no=seq_no, txn=txn)
 
     def processRequest(self, request: Request, frm: str):
         """

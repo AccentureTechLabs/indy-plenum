@@ -50,8 +50,8 @@ class RequestHandler:
 
     def commit(self, txnCount, stateRoot, txnRoot) -> List:
         """
-        :param txnCount: The number of requests to commit (The actual requests are
-        picked up from the uncommitted list from the ledger)
+        :param txnCount: The number of requests to commit (The actual requests
+        are picked up from the uncommitted list from the ledger)
         :param stateRoot: The state trie root after the txns are committed
         :param txnRoot: The txn merkle root after the txns are committed
 

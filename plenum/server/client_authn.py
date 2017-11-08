@@ -137,7 +137,7 @@ class NaclAuthNr(ClientAuthNr):
                 raise InsufficientSignatures(num_sigs, threshold)
         else:
             threshold = num_sigs
-        correct_sigs_by = []
+        correct_sigs_from = []
         for idr, sig in signatures.items():
             try:
                 sig = base58.b58decode(sig)
@@ -153,12 +153,13 @@ class NaclAuthNr(ClientAuthNr):
 
             vr = verifier(verkey, identifier=idr)
             if vr.verify(sig, ser):
-                correct_sigs_by.append(idr)
-                if len(correct_sigs_by) == threshold:
+                correct_sigs_from.append(idr)
+                if len(correct_sigs_from) == threshold:
                     break
         else:
-            raise InsufficientCorrectSignatures(len(correct_sigs_by), threshold)
-        return correct_sigs_by
+            raise InsufficientCorrectSignatures(len(correct_sigs_from),
+                                                threshold)
+        return correct_sigs_from
 
     @abstractmethod
     def addIdr(self, identifier, verkey, role=None):

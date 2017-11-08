@@ -48,7 +48,7 @@ class PoolRequestHandler(RequestHandler):
             txn = reqToTxn(req, cons_time)
             (start, end), _ = self.ledger.appendTxns([txn])
             self.updateState(txnsWithSeqNo(start, end, [txn]))
-            return txn
+            return start, txn
         else:
             logger.debug(
                 'Cannot apply request of type {} to state'.format(typ))

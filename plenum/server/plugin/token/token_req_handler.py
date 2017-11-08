@@ -100,7 +100,7 @@ class TokenReqHandler(RequestHandler):
         (start, end), _ = self.ledger.appendTxns(
             [self.transform_txn_for_ledger(txn)])
         self.updateState(txnsWithSeqNo(start, end, [txn]))
-        return txn
+        return start, txn
 
     @staticmethod
     def transform_txn_for_ledger(txn):
@@ -127,16 +127,12 @@ class TokenReqHandler(RequestHandler):
                                      is_committed=is_committed)
 
     def _spend_input(self, address, seq_no, is_committed=False):
-        state_key = self.create_state_key(address, seq_no)
-        self.state.set(state_key, b'')
-        self.utxo_cache.spend_output(Output(address, seq_no, None),
-                                     is_committed=is_committed)
+        self.spend_input(self.state, self.utxo_cache, address, seq_no,
+                         is_committed=is_committed)
 
     def _add_new_output(self, output: Output, is_committed=False):
-        address, seq_no, amount = output
-        state_key = self.create_state_key(address, seq_no)
-        self.state.set(state_key, str(amount).encode())
-        self.utxo_cache.add_output(output, is_committed=is_committed)
+        self.add_new_output(self.state, self.utxo_cache, output,
+                            is_committed=is_committed)
 
     def onBatchCreated(self, state_root):
         self.utxo_cache.create_batch_from_current(state_root)
@@ -163,25 +159,31 @@ class TokenReqHandler(RequestHandler):
         result.update(request.operation)
         return result
 
-    # def _validate_output(self, outputs: List[Tuple]):
-    #     # Each output is valid and each output contains unique address
-    #     error = self._public_output_validator.validate(outputs)
-    #     if not error and (len(outputs) != len({out[0] for out in outputs})):
-    #         error = 'Each output should contain unique address'
-    #     return error
-    #
-    # def _validate_input(self, inputs: List[Tuple]):
-    #     # Each input is valid and each input contains unique address+seq_no
-    #     error = self._public_input_validator.validate(inputs)
-    #     if not error and (len(inputs) != len({(inp[0], inp[1]) for inp in inputs})):
-    #         error = 'Each input should be unique'
-    #     return error
-
-    def _sum_inputs(self, inputs: Iterable, is_committed=False) -> float:
-        return sum([self.utxo_cache.get_output(
-            Output(addr, seq_no, None), is_committed=is_committed).value
-            for addr, seq_no in inputs])
+    def _sum_inputs(self, inputs: Iterable, is_committed=False) -> int:
+        return self.sum_inputs(self.utxo_cache, inputs,
+                               is_committed=is_committed)
 
     @staticmethod
     def create_state_key(address: str, seq_no: int) -> bytes:
         return ':'.join([address, str(seq_no)]).encode()
+
+    @staticmethod
+    def sum_inputs(utxo_cache: UTXOCache, inputs: Iterable,
+                   is_committed=False) -> int:
+        return sum([utxo_cache.get_output(
+            Output(addr, seq_no, None), is_committed=is_committed).value
+                    for addr, seq_no in inputs])
+
+    @staticmethod
+    def spend_input(state, utxo_cache, address, seq_no, is_committed=False):
+        state_key = TokenReqHandler.create_state_key(address, seq_no)
+        state.set(state_key, b'')
+        utxo_cache.spend_output(Output(address, seq_no, None),
+                                       is_committed=is_committed)
+
+    @staticmethod
+    def add_new_output(state, utxo_cache, output: Output, is_committed=False):
+        address, seq_no, amount = output
+        state_key = TokenReqHandler.create_state_key(address, seq_no)
+        state.set(state_key, str(amount).encode())
+        utxo_cache.add_output(output, is_committed=is_committed)

@@ -1,15 +1,15 @@
 # It is assumed the initial minting will give some tokens to the Sovrin
-# Foundation and token seller platform. From then on, exchange will be responsible for
-# giving tokens to "users".
+# Foundation and token seller platform. From then on, exchange will be
+# responsible for giving tokens to "users".
 import pytest
 
 from plenum.common.constants import STEWARD
 from plenum.test.conftest import get_data_for_role
+from plenum.test.plugin.token.helper import send_public_mint, \
+    do_public_minting, check_output_val_on_all_nodes
 from plenum.test.plugin.token.conftest import build_wallets_from_data
 from plenum.test.pool_transactions.conftest import clientAndWallet1, \
     client1, wallet1, client1Connected, looper
-from plenum.test.plugin.token.helper import send_public_mint, do_public_minting, \
-    check_output_val_on_all_nodes
 
 
 def test_trustee_invalid_minting(looper, txnPoolNodeSet, client1, # noqa
@@ -24,7 +24,7 @@ def test_trustee_invalid_minting(looper, txnPoolNodeSet, client1, # noqa
         send_public_mint(looper, trustee_wallets, outputs, client1)
 
 
-#What about trust anchors, TGB, do those fail as well?
+# What about trust anchors, TGB, do those fail as well?
 def test_non_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
                                wallet1, client1Connected, SF_address,
                              seller_address, poolTxnData):
@@ -41,9 +41,10 @@ def test_non_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
         send_public_mint(looper, steward_wallets, outputs, client1)
 
 
-#where are the trustee signatures coming from? How is the trustee wallet created here?
-#who can set the number of trustees needed, where is that value configured?
-#Is there a mint limit?
+# where are the trustee signatures coming from? How is the trustee wallet
+# created here?
+# who can set the number of trustees needed, where is that value configured?
+# Is there a mint limit?
 def test_less_than_min_trustee_minting(looper, txnPoolNodeSet, client1, # noqa
                                  wallet1, client1Connected, trustee_wallets,
                                  SF_address, seller_address):

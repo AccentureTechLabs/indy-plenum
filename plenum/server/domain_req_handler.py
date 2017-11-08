@@ -52,7 +52,6 @@ class DomainRequestHandler(RequestHandler):
         for processor in self.reqProcessors:
             res = processor.process(req)
             txn.update(res)
-
         return txn
 
     def apply(self, req: Request, cons_time: int):
@@ -60,7 +59,7 @@ class DomainRequestHandler(RequestHandler):
         (start, end), _ = self.ledger.appendTxns(
             [self.transform_txn_for_ledger(txn)])
         self.updateState(txnsWithSeqNo(start, end, [txn]))
-        return txn
+        return start, txn
 
     @staticmethod
     def transform_txn_for_ledger(txn):

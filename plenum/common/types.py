@@ -70,6 +70,7 @@ class f:  # provides a namespace for reusable field constants
     PRIMARY = Field("primary", dict)
     FEES = Field("fees", dict)
     SIGS = Field('signatures', dict)
+    PLUGIN_FIELDS = Field('plugin_fields', dict)
 
 
 OPERATION = 'operation'

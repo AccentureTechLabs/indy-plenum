@@ -2,17 +2,18 @@ import time
 from collections import deque, OrderedDict
 from enum import unique, IntEnum
 from hashlib import sha256
-from typing import List, Union, Dict, Optional, Any, Set, Tuple, Callable
+from typing import List, Dict, Optional, Any, Set, Tuple, Callable
 
 import plenum.server.node
 from common.serializers.serialization import serialize_msg_for_signing, state_roots_serializer
-from crypto.bls.bls_bft import BlsBft
 from crypto.bls.bls_bft_replica import BlsBftReplica
 from orderedset import OrderedSet
 from plenum.common.config_util import getConfig
-from plenum.common.constants import THREE_PC_PREFIX, PREPREPARE, PREPARE
+from plenum.common.constants import THREE_PC_PREFIX, PREPREPARE, PREPARE, \
+    REPLICA_HOOKS, CREATE_PPR, CREATE_PR, CREATE_CM, CREATE_ORD
 from plenum.common.exceptions import SuspiciousNode, \
     InvalidClientMessageException, UnknownIdentifier
+from plenum.common.hook_manager import HookManager
 from plenum.common.message_processor import MessageProcessor
 from plenum.common.messages.node_messages import Reject, Ordered, \
     PrePrepare, Prepare, Commit, Checkpoint, ThreePCState, CheckpointState, ThreePhaseMsg, ThreePhaseKey
@@ -81,7 +82,7 @@ PP_APPLY_WRONG_STATE = 9
 PP_APPLY_ROOT_HASH_MISMATCH = 10
 
 
-class Replica(HasActionQueue, MessageProcessor):
+class Replica(HasActionQueue, MessageProcessor, HookManager):
     STASHED_CHECKPOINTS_BEFORE_CATCHUP = 1
     HAS_NO_PRIMARY_WARN_THRESCHOLD = 10
 
@@ -285,6 +286,8 @@ class Replica(HasActionQueue, MessageProcessor):
 
         self._bls_bft_replica = bls_bft_replica
         self._state_root_serializer = state_roots_serializer
+
+        HookManager.__init__(self, REPLICA_HOOKS)
 
     def register_ledger(self, ledger_id):
         # Using ordered set since after ordering each PRE-PREPARE,
@@ -728,6 +731,10 @@ class Replica(HasActionQueue, MessageProcessor):
         params = self._bls_bft_replica.update_pre_prepare(params, ledger_id)
 
         pre_prepare = PrePrepare(*params)
+        if self.isMaster:
+            rv = self.execute_hook(CREATE_PPR, pre_prepare)
+            pre_prepare = rv if rv is not None else pre_prepare
+
         logger.debug('{} created a PRE-PREPARE with {} requests for ledger {}'
                      .format(self, len(validReqs), ledger_id))
         self.lastPrePrepareSeqNo = ppSeqNo
@@ -1051,6 +1058,9 @@ class Replica(HasActionQueue, MessageProcessor):
         params = self._bls_bft_replica.update_prepare(params, pp.ledgerId)
 
         prepare = Prepare(*params)
+        if self.isMaster:
+            rv = self.execute_hook(CREATE_PR, prepare)
+            prepare = rv if rv is not None else prepare
         self.send(prepare, TPCStat.PrepareSent)
         self.addToPrepares(prepare, self.name)
 
@@ -1074,6 +1084,9 @@ class Replica(HasActionQueue, MessageProcessor):
             params = self._bls_bft_replica.update_commit(params, pre_prepare)
 
         commit = Commit(*params)
+        if self.isMaster:
+            rv = self.execute_hook(CREATE_CM, commit)
+            commit = rv if rv is not None else commit
 
         self.send(commit, TPCStat.CommitSent)
         self.addToCommits(commit, self.name)
@@ -1591,6 +1604,10 @@ class Replica(HasActionQueue, MessageProcessor):
                           pp.ledgerId,
                           pp.stateRootHash,
                           pp.txnRootHash)
+        if self.isMaster:
+            rv = self.execute_hook(CREATE_ORD, ordered)
+            ordered = rv if rv is not None else ordered
+
         # TODO: Should not order or add to checkpoint while syncing
         # 3 phase state.
         if key in self.stashingWhileCatchingUp:
