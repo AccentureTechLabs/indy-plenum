@@ -10,7 +10,8 @@ from crypto.bls.bls_bft_replica import BlsBftReplica
 from orderedset import OrderedSet
 from plenum.common.config_util import getConfig
 from plenum.common.constants import THREE_PC_PREFIX, PREPREPARE, PREPARE, \
-    REPLICA_HOOKS, CREATE_PPR, CREATE_PR, CREATE_CM, CREATE_ORD
+    REPLICA_HOOKS, CREATE_PPR, CREATE_PR, CREATE_CM, CREATE_ORD, RECV_PPR, \
+    RECV_PR
 from plenum.common.exceptions import SuspiciousNode, \
     InvalidClientMessageException, UnknownIdentifier
 from plenum.common.hook_manager import HookManager
@@ -1059,7 +1060,7 @@ class Replica(HasActionQueue, MessageProcessor, HookManager):
 
         prepare = Prepare(*params)
         if self.isMaster:
-            rv = self.execute_hook(CREATE_PR, prepare)
+            rv = self.execute_hook(CREATE_PR, prepare, pp)
             prepare = rv if rv is not None else prepare
         self.send(prepare, TPCStat.PrepareSent)
         self.addToPrepares(prepare, self.name)
@@ -1192,6 +1193,11 @@ class Replica(HasActionQueue, MessageProcessor, HookManager):
             if pre_prepare.txnRootHash != self.txnRootHash(pre_prepare.ledgerId):
                 revert()
                 return PP_APPLY_ROOT_HASH_MISMATCH
+
+            error = self.execute_hook(RECV_PPR, pre_prepare)
+            if error:
+                revert()
+                return error
 
             self.outBox.extend(rejects)
         return None
@@ -1335,6 +1341,10 @@ class Replica(HasActionQueue, MessageProcessor, HookManager):
         elif prepare.txnRootHash != ppReq.txnRootHash:
             raise SuspiciousNode(sender, Suspicions.PR_TXN_WRONG,
                                  prepare)
+        else:
+            error = self.execute_hook(RECV_PR, prepare, ppReq)
+            if error:
+                raise SuspiciousNode(sender, error, prepare)
 
         # BLS multi-sig:
         self._bls_bft_replica.validate_prepare(prepare, sender)
@@ -1605,7 +1615,7 @@ class Replica(HasActionQueue, MessageProcessor, HookManager):
                           pp.stateRootHash,
                           pp.txnRootHash)
         if self.isMaster:
-            rv = self.execute_hook(CREATE_ORD, ordered)
+            rv = self.execute_hook(CREATE_ORD, ordered, pp)
             ordered = rv if rv is not None else ordered
 
         # TODO: Should not order or add to checkpoint while syncing

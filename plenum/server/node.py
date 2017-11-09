@@ -31,7 +31,9 @@ from plenum.common.constants import openTxns, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, 
     POST_STATIC_VALIDATION, \
     PRE_DYNAMIC_VALIDATION, POST_DYNAMIC_VALIDATION, PRE_REQUEST_APPLICATION, \
     POST_REQUEST_APPLICATION, PRE_REQUEST_COMMIT, POST_REQUEST_COMMIT, \
-    CONFIG_LEDGER_ID, PRE_SIG_VERIFICATION, POST_SIG_VERIFICATION
+    CONFIG_LEDGER_ID, PRE_SIG_VERIFICATION, POST_SIG_VERIFICATION, \
+    PRE_BATCH_CREATED, PRE_BATCH_REJECTED, POST_BATCH_REJECTED, \
+    POST_BATCH_CREATED
 from plenum.common.exceptions import SuspiciousNode, SuspiciousClient, \
     MissingNodeOp, InvalidNodeOp, InvalidNodeMsg, InvalidClientMsgType, \
     InvalidClientRequest, BaseExc, \
@@ -2614,6 +2616,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         :param state_root: state root after the batch creation
         :return:
         """
+        self.execute_hook(PRE_BATCH_CREATED, ledger_id, state_root)
         if ledger_id == POOL_LEDGER_ID:
             if isinstance(self.poolManager, TxnPoolManager):
                 self.get_req_handler(POOL_LEDGER_ID).onBatchCreated(state_root)
@@ -2622,6 +2625,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         else:
             logger.debug('{} did not know how to handle for ledger {}'.
                          format(self, ledger_id))
+        self.execute_hook(POST_BATCH_CREATED, ledger_id, state_root)
 
     def onBatchRejected(self, ledger_id):
         """
@@ -2631,6 +2635,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         :param stateRoot: state root after the batch was created
         :return:
         """
+        self.execute_hook(PRE_BATCH_REJECTED, ledger_id)
         if ledger_id == POOL_LEDGER_ID:
             if isinstance(self.poolManager, TxnPoolManager):
                 self.get_req_handler(POOL_LEDGER_ID).onBatchRejected()
@@ -2639,6 +2644,7 @@ class Node(HasActionQueue, Motor, Propagator, MessageProcessor, HasFileStorage,
         else:
             logger.debug('{} did not know how to handle for ledger {}'.
                          format(self, ledger_id))
+        self.execute_hook(POST_BATCH_REJECTED, ledger_id)
 
     def sendRepliesToClients(self, committedTxns, ppTime):
         for txn in committedTxns:

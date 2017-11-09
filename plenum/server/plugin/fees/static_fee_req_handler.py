@@ -41,6 +41,8 @@ class StaticFeesReqHandler(FeeReqHandler):
             GET_FEES: self.get_fees,
         }
 
+        self.fee_txns_in_current_batch = 0
+
     def get_txn_fees(self, request) -> int:
         return self.fees.get(request.operation[TXN_TYPE], 0)
 
@@ -91,6 +93,7 @@ class StaticFeesReqHandler(FeeReqHandler):
             }
             (start, end), _ = self.token_ledger.appendTxns([txn])
             self.updateState(txnsWithSeqNo(start, end, [txn]))
+            self.fee_txns_in_current_batch += 1
             return txn
 
     def doStaticValidation(self, request: Request):
@@ -176,3 +179,11 @@ class StaticFeesReqHandler(FeeReqHandler):
         except KeyError:
             pass
         return fees
+
+    def post_batch_created(self, ledger_id, state_root):
+        TokenReqHandler.on_batch_created(self.utxo_cache, state_root)
+        self.fee_txns_in_current_batch = 0
+
+    def post_batch_rejected(self, ledger_id):
+        TokenReqHandler.on_batch_rejected(self.utxo_cache)
+        self.fee_txns_in_current_batch = 0

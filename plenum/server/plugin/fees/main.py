@@ -1,7 +1,8 @@
 from plenum.common.constants import DOMAIN_LEDGER_ID, CONFIG_LEDGER_ID, \
     POST_DYNAMIC_VALIDATION, POST_REQUEST_APPLICATION, POST_SIG_VERIFICATION, \
     PRE_REQUEST_APPLICATION, POST_REQUEST_COMMIT, CREATE_PPR, CREATE_PR, \
-    CREATE_ORD, RECV_CM, RECV_PPR
+    CREATE_ORD, RECV_CM, RECV_PPR, BATCH_CREATED, BATCH_REJECTED, \
+    POST_BATCH_CREATED, POST_BATCH_REJECTED
 from plenum.server.plugin.fees.client_authnr import FeesAuthNr
 from plenum.server.plugin.fees.static_fee_req_handler import StaticFeesReqHandler
 from plenum.server.plugin.fees.three_phase_commit_handling import \
@@ -37,8 +38,12 @@ def update_node_obj(node):
     node.register_hook(POST_DYNAMIC_VALIDATION, fees_req_handler.can_pay_fees)
     node.register_hook(POST_REQUEST_APPLICATION, fees_req_handler.deduct_fees)
     node.register_hook(POST_REQUEST_COMMIT, fees_req_handler.commit_fee_txns)
+    node.register_hook(POST_BATCH_CREATED, fees_req_handler.post_batch_created)
+    node.register_hook(POST_BATCH_REJECTED, fees_req_handler.post_batch_rejected)
 
-    three_pc_handler = ThreePhaseCommitHandler(node.master_replica)
+    three_pc_handler = ThreePhaseCommitHandler(node.master_replica,
+                                               token_ledger, token_state,
+                                               fees_req_handler)
     node.master_replica.register_hook(CREATE_PPR,
                                       three_pc_handler.add_to_pre_prepare)
     node.master_replica.register_hook(CREATE_PR,
@@ -49,3 +54,7 @@ def update_node_obj(node):
                                       three_pc_handler.check_recvd_pre_prepare)
     node.master_replica.register_hook(RECV_CM,
                                       three_pc_handler.check_recvd_prepare)
+    node.master_replica.register_hook(BATCH_CREATED,
+                                      three_pc_handler.batch_created)
+    node.master_replica.register_hook(BATCH_REJECTED,
+                                      three_pc_handler.batch_rejected)

@@ -135,10 +135,10 @@ class TokenReqHandler(RequestHandler):
                             is_committed=is_committed)
 
     def onBatchCreated(self, state_root):
-        self.utxo_cache.create_batch_from_current(state_root)
+        self.on_batch_created(self.utxo_cache, state_root)
 
     def onBatchRejected(self):
-        self.utxo_cache.reject_batch()
+        self.on_batch_rejected(self.utxo_cache)
 
     def commit(self, txnCount, stateRoot, txnRoot) -> List:
         r = super().commit(txnCount, stateRoot, txnRoot)
@@ -179,7 +179,7 @@ class TokenReqHandler(RequestHandler):
         state_key = TokenReqHandler.create_state_key(address, seq_no)
         state.set(state_key, b'')
         utxo_cache.spend_output(Output(address, seq_no, None),
-                                       is_committed=is_committed)
+                                is_committed=is_committed)
 
     @staticmethod
     def add_new_output(state, utxo_cache, output: Output, is_committed=False):
@@ -187,3 +187,11 @@ class TokenReqHandler(RequestHandler):
         state_key = TokenReqHandler.create_state_key(address, seq_no)
         state.set(state_key, str(amount).encode())
         utxo_cache.add_output(output, is_committed=is_committed)
+
+    @staticmethod
+    def on_batch_created(utxo_cache, state_root):
+        utxo_cache.create_batch_from_current(state_root)
+
+    @staticmethod
+    def on_batch_rejected(utxo_cache):
+        utxo_cache.reject_batch()
