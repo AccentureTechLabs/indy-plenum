@@ -140,8 +140,8 @@ class TokenReqHandler(RequestHandler):
     def onBatchRejected(self):
         self.on_batch_rejected(self.utxo_cache)
 
-    def commit(self, txnCount, stateRoot, txnRoot) -> List:
-        r = super().commit(txnCount, stateRoot, txnRoot)
+    def commit(self, txnCount, stateRoot, txnRoot, ppTime) -> List:
+        r = super().commit(txnCount, stateRoot, txnRoot, ppTime)
         stateRoot = base58.b58decode(stateRoot.encode())
         assert self.utxo_cache.first_batch_idr == stateRoot
         self.utxo_cache.commit_batch()

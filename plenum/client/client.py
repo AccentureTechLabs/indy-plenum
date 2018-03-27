@@ -42,8 +42,7 @@ from plenum.common.constants import REPLY, POOL_LEDGER_TXNS, \
     MULTI_SIGNATURE_SIGNATURE, MULTI_SIGNATURE_VALUE
 from plenum.common.txn_util import idr_from_req_data
 from plenum.common.types import f
-from plenum.common.util import getMaxFailures, checkIfMoreThanFSameItems, \
-    rawToFriendly, mostCommonElement
+from plenum.common.util import getMaxFailures, rawToFriendly, mostCommonElement
 from plenum.persistence.client_req_rep_store_file import ClientReqRepStoreFile
 from plenum.persistence.client_txn_log import ClientTxnLog
 from plenum.server.has_action_queue import HasActionQueue
@@ -72,6 +71,10 @@ class Client(Motor,
                  nodeReg: Dict[str, HA] = None,
                  ha: Union[HA, Tuple[str, int]] = None,
                  basedirpath: str = None,
+                 genesis_dir: str = None,
+                 ledger_dir: str = None,
+                 keys_dir: str = None,
+                 plugins_dir: str = None,
                  config=None,
                  sighex: str = None):
         """
@@ -82,8 +85,10 @@ class Client(Motor,
         :param ha: tuple of host and port
         """
         self.config = config or getConfig()
-        self.basedirpath = basedirpath or os.path.join(self.config.baseDir,
-                                                       self.config.NETWORK_NAME)
+
+        dataDir = self.config.clientDataDir or "data/clients"
+        self.basedirpath = basedirpath or self.config.CLI_BASE_DIR
+        self.basedirpath = os.path.expanduser(self.basedirpath)
 
         signer = Signer(sighex)
         sighex = signer.keyraw
@@ -95,11 +100,16 @@ class Client(Motor,
         # self.name = name
         self.name = self.stackName or 'Client~' + str(id(self))
 
+        self.genesis_dir = genesis_dir or self.basedirpath
+        self.ledger_dir = ledger_dir or os.path.join(self.basedirpath, dataDir, self.name)
+        self.plugins_dir = plugins_dir or self.basedirpath
+        _keys_dir = keys_dir or self.basedirpath
+        self.keys_dir = os.path.join(_keys_dir, "keys")
+
         cha = None
-        # If client information already exists is RAET then use that
-        if self.exists(self.stackName, self.basedirpath):
+        if self.exists(self.stackName, self.keys_dir):
             cha = self.nodeStackClass.getHaFromLocal(
-                self.stackName, self.basedirpath)
+                self.stackName, self.keys_dir)
             if cha:
                 cha = HA(*cha)
                 logger.debug("Client {} ignoring given ha {} and using {}".
@@ -110,9 +120,7 @@ class Client(Motor,
         self.reqRepStore = self.getReqRepStore()
         self.txnLog = self.getTxnLogStore()
 
-        self.dataDir = self.config.clientDataDir or "data/clients"
-        HasFileStorage.__init__(self, self.name, baseDir=self.basedirpath,
-                                dataDir=self.dataDir)
+        HasFileStorage.__init__(self, self.ledger_dir)
 
         # TODO: Find a proper name
         self.alias = name
@@ -141,7 +149,7 @@ class Client(Motor,
                          ha=cha,
                          main=False,  # stops incoming vacuous joins
                          auth_mode=AuthMode.ALLOW_ANY.value)
-        stackargs['basedirpath'] = basedirpath
+        stackargs['basedirpath'] = self.keys_dir
         self.created = time.perf_counter()
 
         # noinspection PyCallingNonCallable
@@ -193,7 +201,9 @@ class Client(Motor,
         self._observers = {}  # type Dict[str, Callable]
         self._observerSet = set()  # makes it easier to guard against duplicates
 
-        tp = loadPlugins(self.basedirpath)
+        plugins_to_load = self.config.PluginsToLoad if hasattr(self.config, "PluginsToLoad") else None
+        tp = loadPlugins(self.plugins_dir, plugins_to_load)
+
         logger.debug("total plugins loaded in client: {}".format(tp))
 
         self._multi_sig_verifier = self._create_multi_sig_verifier()
@@ -209,10 +219,10 @@ class Client(Motor,
         return verifier
 
     def getReqRepStore(self):
-        return ClientReqRepStoreFile(self.name, self.basedirpath)
+        return ClientReqRepStoreFile(self.ledger_dir)
 
     def getTxnLogStore(self):
-        return ClientTxnLog(self.name, self.basedirpath)
+        return ClientTxnLog(self.ledger_dir)
 
     def __repr__(self):
         return self.name
@@ -245,9 +255,9 @@ class Client(Motor,
                 self.minNodesToConnect, self.quorums))
 
     @staticmethod
-    def exists(name, basedirpath):
-        return os.path.exists(basedirpath) and \
-            os.path.exists(os.path.join(basedirpath, name))
+    def exists(name, base_dir):
+        return os.path.exists(base_dir) and \
+            os.path.exists(os.path.join(base_dir, name))
 
     @property
     def nodeStackClass(self) -> NetworkInterface:
@@ -263,7 +273,7 @@ class Client(Motor,
             self.nodestack.start()
             self.nodestack.maintainConnections(force=True)
             if self.ledger:
-                self.ledgerManager.setLedgerCanSync(0, True)
+                self.ledgerManager.setLedgerCanSync(POOL_LEDGER_ID, True)
                 self.mode = Mode.starting
 
     async def prod(self, limit) -> int:
@@ -291,8 +301,7 @@ class Client(Motor,
 
         for request in reqs:
             is_read_only = request.txn_type in self._read_only_requests
-            if (self.mode == Mode.discovered and self.hasSufficientConnections) or \
-               (self.hasAnyConnections and (is_read_only or request.isForced())):
+            if self.can_send_request(request):
                 recipients = self._connected_node_names
                 if is_read_only and len(recipients) > 1:
                     recipients = random.sample(list(recipients), 1)
@@ -620,6 +629,34 @@ class Client(Motor,
     def hasAnyConnections(self):
         return len(self.nodestack.conns) > 0
 
+    def can_send_write_requests(self):
+        if not Mode.is_done_discovering(self.mode):
+            return False
+        if not self.hasSufficientConnections:
+            return False
+        return True
+
+    def can_send_read_requests(self):
+        if not Mode.is_done_discovering(self.mode):
+            return False
+        if not self.hasAnyConnections:
+            return False
+        return True
+
+    def can_send_request(self, request):
+        if not Mode.is_done_discovering(self.mode):
+            return False
+        if self.hasSufficientConnections:
+            return True
+        if not self.hasAnyConnections:
+            return False
+        if request.isForced():
+            return True
+        is_read_only = request.txn_type in self._read_only_requests
+        if is_read_only:
+            return True
+        return False
+
     def pendReqsTillConnection(self, request, signer=None):
         """
         Enqueue requests that need to be submitted until the client has
@@ -638,8 +675,7 @@ class Client(Motor,
             tmp = deque()
             while self.reqsPendingConnection:
                 req, signer = self.reqsPendingConnection.popleft()
-                if (self.hasSufficientConnections and self.mode == Mode.discovered) or (
-                        req.isForced() and self.hasAnyConnections):
+                if self.can_send_request(req):
                     self.send(req, signer=signer)
                 else:
                     tmp.append((req, signer))
@@ -841,8 +877,8 @@ class Client(Motor,
         self._observerSet.remove(self._observers[name])
         del self._observers[name]
 
-    def hasObserver(self, name):
-        return name in self._observerSet
+    def hasObserver(self, observer):
+        return observer in self._observerSet
 
 
 class ClientProvider:

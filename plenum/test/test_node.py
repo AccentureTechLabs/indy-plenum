@@ -144,8 +144,8 @@ class TestNodeCore(StackedTester):
             self.monitor.addInstance()
         self.replicas._monitor = self.monitor
 
-    def create_replicas(self, config=None):
-        return TestReplicas(self, self.monitor, config)
+    def create_replicas(self):
+        return TestReplicas(self, self.monitor)
 
     async def processNodeInBox(self):
         self.nodeIbStasher.process()
@@ -466,7 +466,7 @@ class TestReplica(replica.Replica):
 
 class TestReplicas(Replicas):
     def _new_replica(self, instance_id: int, is_master: bool, bls_bft: BlsBft):
-        return TestReplica(self._node, instance_id, self._config, is_master, bls_bft)
+        return TestReplica(self._node, instance_id, self._node.config, is_master, bls_bft)
 
 
 class TestNodeSet(ExitStack):

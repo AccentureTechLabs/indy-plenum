@@ -188,6 +188,8 @@ class NodeHooks(UniqueSet):
     POST_REQUEST_APPLICATION = 8
     PRE_REQUEST_COMMIT = 9
     POST_REQUEST_COMMIT = 10
+    POST_BATCH_CREATED = 11
+    POST_BATCH_REJECTED = 12
 
 
 class ReplicaHooks(UniqueSet):
@@ -198,6 +200,8 @@ class ReplicaHooks(UniqueSet):
     RECV_PPR = 5
     RECV_PR = 6
     RECV_CM = 7
+    BATCH_CREATED = 8
+    BATCH_REJECTED = 9
 
 
 INVALID_SEQ_NO = -23
