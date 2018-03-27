@@ -18,8 +18,8 @@ class RequestHandler:
     Declares methods for validation, application of requests and
     state control
     """
-    valid_txn_types = {}
-    query_types = {}
+    write_types = set()
+    query_types = set()
 
     def __init__(self, ledger: Ledger, state: State):
         self.ledger = ledger
@@ -48,7 +48,7 @@ class RequestHandler:
         not committed transactions
         """
 
-    def commit(self, txnCount, stateRoot, txnRoot) -> List:
+    def commit(self, txnCount, stateRoot, txnRoot, ppTime) -> List:
         """
         :param txnCount: The number of requests to commit (The actual requests
         are picked up from the uncommitted list from the ledger)
@@ -82,3 +82,7 @@ class RequestHandler:
     @staticmethod
     def transform_txn_for_ledger(txn):
         return txn
+
+    @property
+    def valid_txn_types(self) -> set:
+        return self.write_types.union(self.query_types)

@@ -6,6 +6,7 @@ from plenum.client.wallet import Wallet
 from plenum.common.constants import TXN_TYPE, TARGET_NYM, DATA, NODE_IP, \
     NODE_PORT, CLIENT_IP, CLIENT_PORT, ALIAS, NODE, CLIENT_STACK_SUFFIX, SERVICES, VALIDATOR
 from plenum.common.roles import Roles
+from plenum.common.signer_did import DidSigner
 from plenum.common.signer_simple import SimpleSigner
 from plenum.common.transactions import PlenumTransactions
 from plenum.test import waits
@@ -13,7 +14,6 @@ from storage.text_file_store import TextFileStore
 from stp_core.loop.eventually import eventually
 from stp_core.network.port_dispenser import genHa
 from stp_core.types import HA
-from stp_raet.util import getLocalVerKey, getLocalPubKey
 
 NodeInfoFile = "node-info"
 GenTxnFile = "genesis_txn"
@@ -106,10 +106,6 @@ def storeGenTxns(baseDir, txn):
                 isLineNoKey=True)
 
 
-def getStewardKeyFromName(baseDir, name):
-    return getLocalVerKey(name, baseDir)
-
-
 def getAddGenesisHAs(nodeip, nodeport, clientip, clientport):
     vnodeip = nodeip if nodeip else "127.0.0.1"
     vnodeport = nodeport if nodeport else "9701"
@@ -181,41 +177,6 @@ def printGenTxn(txn, displayTxn):
         print('\n' + txn)
 
 
-def getVerKeyFromName(baseDir, roleName):
-    return getLocalVerKey(roleName, baseDir)
-
-
-def getPubKeyFromName(baseDir, roleName):
-    return getLocalPubKey(roleName, baseDir)
-
-
-def exportNodeGenTxn(baseDir, displayTxn, name):
-    nodeInfo = getNodeInfo(baseDir, name)
-    nodeVerKey = getVerKeyFromName(baseDir, name)
-    stewardKey = nodeInfo.get('steward')
-    nodeAddr = nodeInfo.get('nodeAddr')
-    clientAddr = nodeInfo.get('clientAddr')
-
-    txn = 'add genesis transaction {node} with data {"'.format(node=PlenumTransactions.NODE.name) + name + '": {' \
-        '"verkey":' \
-        ' "' + \
-          nodeVerKey + \
-          '", "node_address": "' + nodeAddr + \
-          '", "client_address": "' + clientAddr + '"}, "by":"' + stewardKey + \
-          '"}'
-    storeExportedTxns(baseDir, txn)
-    printGenTxn(txn, displayTxn)
-
-
-def exportStewardGenTxn(baseDir, displayTxn, name):
-    verkey = getLocalVerKey(name, baseDir)
-    txn = 'add genesis transaction {nym} with data  {"'.format(nym=PlenumTransactions.NYM.name) + name + '": {' \
-        '"verkey": "' + verkey + '"} role={role}'.format(
-        role=Roles.STEWARD.name)
-    storeExportedTxns(baseDir, txn)
-    printGenTxn(txn, displayTxn)
-
-
 def submitNodeIpChange(client, stewardWallet, name: str, nym: str,
                        nodeStackHa: HA, clientStackHa: HA):
     (nodeIp, nodePort), (clientIp, clientPort) = nodeStackHa, clientStackHa
@@ -248,7 +209,7 @@ def changeHA(looper, config, nodeName, nodeSeed, newNodeHA,
     assert basedir is not None
 
     # prepare steward wallet
-    stewardSigner = SimpleSigner(seed=stewardsSeed)
+    stewardSigner = DidSigner(seed=stewardsSeed)
     stewardWallet = Wallet(stewardName)
     stewardWallet.addIdentifier(signer=stewardSigner)
 

@@ -20,10 +20,10 @@ logger = getlogger()
 
 
 class TxnStackManager(metaclass=ABCMeta):
-    def __init__(self, name, basedirpath, isNode=True):
+    def __init__(self, name, genesis_dir, keys_dir, isNode=True):
         self.name = name
-        self.basedirpath = basedirpath
-        self.key_path = os.path.expanduser(basedirpath)
+        self.genesis_dir = genesis_dir
+        self.keys_dir = keys_dir
         self.isNode = isNode
 
     @property
@@ -50,7 +50,7 @@ class TxnStackManager(metaclass=ABCMeta):
     @lazy_field
     def ledger(self):
         data_dir = self.ledgerLocation
-        genesis_txn_initiator = GenesisTxnInitiatorFromFile(self.basedirpath,
+        genesis_txn_initiator = GenesisTxnInitiatorFromFile(self.genesis_dir,
                                                             self.ledgerFile)
         tree = CompactMerkleTree(hashStore=self.hashStore)
         ledger = Ledger(tree,
@@ -62,7 +62,7 @@ class TxnStackManager(metaclass=ABCMeta):
         return ledger
 
     @staticmethod
-    def parseLedgerForHaAndKeys(ledger, returnActive=True):
+    def parseLedgerForHaAndKeys(ledger, returnActive=True, ledger_size=None):
         """
         Returns validator ip, ports and keys
         :param ledger:
@@ -76,7 +76,8 @@ class TxnStackManager(metaclass=ABCMeta):
         activeValidators = set()
         try:
             TxnStackManager._parse_pool_transaction_file(
-                ledger, nodeReg, cliNodeReg, nodeKeys, activeValidators)
+                ledger, nodeReg, cliNodeReg, nodeKeys, activeValidators,
+                ledger_size=ledger_size)
         except ValueError:
             errMsg = 'Pool transaction file corrupted. Rebuild pool transactions.'
             logger.exception(errMsg)
@@ -96,11 +97,12 @@ class TxnStackManager(metaclass=ABCMeta):
 
     @staticmethod
     def _parse_pool_transaction_file(
-            ledger, nodeReg, cliNodeReg, nodeKeys, activeValidators):
+            ledger, nodeReg, cliNodeReg, nodeKeys, activeValidators,
+            ledger_size=None):
         """
         helper function for parseLedgerForHaAndKeys
         """
-        for _, txn in ledger.getAllTxn():
+        for _, txn in ledger.getAllTxn(to=ledger_size):
             if txn[TXN_TYPE] == NODE:
                 nodeName = txn[DATA][ALIAS]
                 clientStackName = nodeName + CLIENT_STACK_SUFFIX
@@ -148,10 +150,10 @@ class TxnStackManager(metaclass=ABCMeta):
                 # Override any keys found, reason being the scenario where
                 # before this node comes to know about the other node, the other
                 # node tries to connect to it.
-                initRemoteKeys(self.name, remoteName, self.key_path,
-                               verkey, override=True)
-            except Exception:
-                logger.exception("Exception while initializing keep for remote")
+                initRemoteKeys(self.name, remoteName, self.keys_dir, verkey, override=True)
+            except Exception as ex:
+                logger.error("Exception while initializing keep for remote {}".
+                             format(ex))
 
         if self.isNode:
             nodeOrClientObj.nodeReg[remoteName] = HA(*nodeHa)
@@ -168,14 +170,46 @@ class TxnStackManager(metaclass=ABCMeta):
         nodeOrClientObj.nodestack.maintainConnections(force=True)
 
     def stackHaChanged(self, txn, remoteName, nodeOrClientObj):
-        nodeHa = (txn[DATA][NODE_IP], txn[DATA][NODE_PORT])
-        cliHa = (txn[DATA][CLIENT_IP], txn[DATA][CLIENT_PORT])
+        nodeHa = None
+        cliHa = None
+        if self.isNode:
+            node_ha_changed = False
+            (ip, port) = nodeOrClientObj.nodeReg[remoteName]
+            if NODE_IP in txn[DATA] and ip != txn[DATA][NODE_IP]:
+                ip = txn[DATA][NODE_IP]
+                node_ha_changed = True
+
+            if NODE_PORT in txn[DATA] and port != txn[DATA][NODE_PORT]:
+                port = txn[DATA][NODE_PORT]
+                node_ha_changed = True
+
+            if node_ha_changed:
+                nodeHa = (ip, port)
+
+        cli_ha_changed = False
+        (ip, port) = nodeOrClientObj.cliNodeReg[remoteName + CLIENT_STACK_SUFFIX] \
+            if self.isNode \
+            else nodeOrClientObj.nodeReg[remoteName]
+
+        if CLIENT_IP in txn[DATA] and ip != txn[DATA][CLIENT_IP]:
+            ip = txn[DATA][CLIENT_IP]
+            cli_ha_changed = True
+
+        if CLIENT_PORT in txn[DATA] and port != txn[DATA][CLIENT_PORT]:
+            port = txn[DATA][CLIENT_PORT]
+            cli_ha_changed = True
+
+        if cli_ha_changed:
+            cliHa = (ip, port)
+
         rid = self.removeRemote(nodeOrClientObj.nodestack, remoteName)
         if self.isNode:
-            nodeOrClientObj.nodeReg[remoteName] = HA(*nodeHa)
-            nodeOrClientObj.cliNodeReg[remoteName +
-                                       CLIENT_STACK_SUFFIX] = HA(*cliHa)
-        else:
+            if nodeHa:
+                nodeOrClientObj.nodeReg[remoteName] = HA(*nodeHa)
+            if cliHa:
+                nodeOrClientObj.cliNodeReg[remoteName +
+                                           CLIENT_STACK_SUFFIX] = HA(*cliHa)
+        elif cliHa:
             nodeOrClientObj.nodeReg[remoteName] = HA(*cliHa)
 
         # Attempt connection at the new HA
@@ -198,7 +232,7 @@ class TxnStackManager(metaclass=ABCMeta):
             verkey = cryptonymToHex(txn[VERKEY])
 
         # Override any keys found
-        initRemoteKeys(self.name, remoteName, self.key_path, verkey, override=True)
+        initRemoteKeys(self.name, remoteName, self.keys_dir, verkey, override=True)
 
         # Attempt connection with the new keys
         nodeOrClientObj.nodestack.maintainConnections(force=True)
@@ -229,10 +263,16 @@ class TxnStackManager(metaclass=ABCMeta):
                 # node tries to connect to it.
                 # Do it only for Nodes, not for Clients!
                 # if self.isNode:
-                initRemoteKeys(self.name, remoteName, self.key_path, key, override=True)
+                initRemoteKeys(self.name, remoteName, self.keys_dir, key,
+                               override=True)
             except Exception as ex:
                 logger.error("Exception while initializing keep for remote {}".
                              format(ex))
+
+    def getNodeRegistry(self, ledger_size=None):
+        nodeReg, _, _ = self.parseLedgerForHaAndKeys(
+            self.ledger, ledger_size=ledger_size)
+        return nodeReg
 
     def nodeExistsInLedger(self, nym):
         # Since PoolLedger is going to be small so using
@@ -265,6 +305,15 @@ class TxnStackManager(metaclass=ABCMeta):
         for txn in txns:
             self.updateNodeTxns(info, txn)
         return nodeTxnSeqNos, info
+
+    def getNodesServices(self):
+        # Returns services for each node
+        srvs = dict()
+        for _, txn in self.ledger.getAllTxn():
+            if txn[TXN_TYPE] == NODE and \
+                    txn.get(DATA, {}).get(SERVICES) is not None:
+                srvs.update({txn[TARGET_NYM]: txn[DATA][SERVICES]})
+        return srvs
 
     @staticmethod
     def updateNodeTxns(oldTxn, newTxn):

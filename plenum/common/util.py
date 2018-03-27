@@ -10,11 +10,13 @@ import logging
 import math
 import os
 import random
+import re
 import time
 from binascii import unhexlify, hexlify
 from collections import Counter, defaultdict
 from collections import OrderedDict
 from datetime import datetime, timezone
+from enum import unique, IntEnum
 from math import floor
 from os.path import basename
 from typing import TypeVar, Iterable, Mapping, Set, Sequence, Any, Dict, \
@@ -29,7 +31,7 @@ from sortedcontainers import SortedDict as _SortedDict
 
 from ledger.util import F
 from plenum.cli.constants import WALLET_FILE_EXTENSION
-from plenum.common.error import error
+from common.error import error
 from stp_core.crypto.util import isHexKey, isHex
 from stp_core.network.exceptions import \
     InvalidEndpointIpAddress, InvalidEndpointPort
@@ -83,15 +85,37 @@ def randomSeed(size=32):
     return randomString(size)
 
 
-def mostCommonElement(elements: Iterable[T]):
+def mostCommonElement(elements: Iterable[T], to_hashable_f: Callable=None):
     """
     Find the most frequent element of a collection.
 
     :param elements: An iterable of elements
+    :param to_hashable_f: (optional) if defined will be used to get
+        hashable presentation for non-hashable elements. Otherwise json.dumps
+        is used with sort_keys=True
     :return: element which is the most frequent in the collection and
         the number of its occurrences
     """
-    return Counter(elements).most_common(n=1)[0]
+    class _Hashable(collections.abc.Hashable):
+        def __init__(self, orig):
+            self.orig = orig
+
+            if isinstance(orig, collections.Hashable):
+                self.hashable = orig
+            elif to_hashable_f is not None:
+                self.hashable = to_hashable_f(orig)
+            else:
+                self.hashable = json.dumps(orig, sort_keys=True)
+
+        def __eq__(self, other):
+            return self.hashable == other.hashable
+
+        def __hash__(self):
+            return hash(self.hashable)
+
+    _elements = (_Hashable(el) for el in elements)
+    most_common, counter = Counter(_elements).most_common(n=1)[0]
+    return most_common.orig, counter
 
 
 def updateNamedTuple(tupleToUpdate: NamedTuple, **kwargs):
@@ -507,6 +531,17 @@ def is_network_ip_address_valid(ip_address):
         return True
 
 
+def is_hostname_valid(hostname):
+    # Taken from https://stackoverflow.com/a/2532344
+    if len(hostname) > 255:
+        return False
+    if hostname[-1] == ".":
+        hostname = hostname[:-1]    # strip exactly one dot from the right,
+        # if present
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    return all(allowed.match(x) for x in hostname.split("."))
+
+
 def check_endpoint_valid(endpoint):
     if ':' not in endpoint:
         # TODO: replace with more suitable exception
@@ -546,21 +581,6 @@ def getLastSavedWalletFileName(dir):
     newest = max(glob.iglob('{}/{}'.format(dir, filePattern)),
                  key=getLastModifiedTime)
     return basename(newest)
-
-
-def updateWalletsBaseDirNameIfOutdated(config):
-    """
-    Renames the wallets base directory if it has the outdated name.
-
-    :param config: the application configuration
-    """
-    if config.walletsDir == 'wallets':  # if the parameter is not overridden
-        oldNamedPath = os.path.expanduser(os.path.join(config.baseDir,
-                                                       'keyrings'))
-        newNamedPath = os.path.expanduser(os.path.join(config.baseDir,
-                                                       'wallets'))
-        if not os.path.exists(newNamedPath) and os.path.isdir(oldNamedPath):
-            os.rename(oldNamedPath, newNamedPath)
 
 
 def pop_keys(mapping: Dict, cond: Callable):
@@ -612,3 +632,10 @@ else:
             """
             key = self._list[index]
             return key, self[key]
+
+
+@unique
+class UniqueSet(IntEnum):
+    @classmethod
+    def get_all_vals(cls):
+        return [i.value for i in cls.__members__.values()]

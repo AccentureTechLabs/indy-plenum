@@ -3,29 +3,36 @@ import inspect
 import itertools
 import logging
 import os
+import shutil
 import re
 import warnings
+import json
 from contextlib import ExitStack
 from copy import copy
 from functools import partial
-
 import time
 from typing import Dict, Any
 
+from indy.pool import create_pool_ledger_config, open_pool_ledger, close_pool_ledger
+from indy.wallet import create_wallet, open_wallet, close_wallet
+from indy.did import create_and_store_my_did
+
 from ledger.genesis_txn.genesis_txn_file_util import create_genesis_txn_init_ledger
-from plenum.common.signer_did import DidSigner
 from plenum.bls.bls_crypto_factory import create_default_bls_crypto_factory
+from plenum.common.signer_did import DidSigner
 from plenum.common.signer_simple import SimpleSigner
 from plenum.test import waits
 
 import gc
 import pip
 import pytest
+import plenum.config as plenum_config
+import plenum.server.general_config.ubuntu_platform_config as platform_config
 from plenum.common.keygen_utils import initNodeKeysForBothStacks, init_bls_keys
 from plenum.test.greek import genNodeNames
 from plenum.test.grouped_load_scheduling import GroupedLoadScheduling
 from plenum.test.node_catchup.helper import ensureClientConnectedToNodesAndPoolLedgerSame
-from plenum.test.pool_transactions.helper import buildPoolClientAndWallet
+from plenum.test.pool_transactions.helper import buildPoolClientAndWallet, sdk_add_new_nym
 from stp_core.common.logging.handlers import TestingHandler
 from stp_core.crypto.util import randomSeed
 from stp_core.network.port_dispenser import genHa
@@ -39,25 +46,28 @@ from stp_core.common.log import getlogger, Logger
 from stp_core.loop.looper import Looper, Prodable
 from plenum.common.constants import TXN_TYPE, DATA, NODE, ALIAS, CLIENT_PORT, \
     CLIENT_IP, NODE_PORT, NYM, CLIENT_STACK_SUFFIX, PLUGIN_BASE_DIR_PATH, ROLE, \
-    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, TRUSTEE, VERKEY, BLS_KEY
+    STEWARD, TARGET_NYM, VALIDATOR, SERVICES, NODE_IP, BLS_KEY, VERKEY, TRUSTEE
 from plenum.common.txn_util import getTxnOrderedFields
 from plenum.common.types import PLUGIN_TYPE_STATS_CONSUMER, f
-from plenum.common.util import getNoInstances, getMaxFailures
+from plenum.common.util import getNoInstances
 from plenum.server.notifier_plugin_manager import PluginManager
 from plenum.test.helper import randomOperation, \
     checkReqAck, checkLastClientReqForNode, waitForSufficientRepliesForRequests, \
     waitForViewChange, requestReturnedToNode, randomText, \
-    mockGetInstalledDistributions, mockImportModule, chk_all_funcs
+    mockGetInstalledDistributions, mockImportModule, chk_all_funcs, \
+    create_new_test_node
 from plenum.test.node_request.node_request_helper import checkPrePrepared, \
     checkPropagated, checkPrepared, checkCommitted
 from plenum.test.plugin.helper import getPluginPath
 from plenum.test.test_client import genTestClient, TestClient
 from plenum.test.test_node import TestNode, TestNodeSet, Pool, \
     checkNodesConnected, ensureElectionsDone, genNodeReg
+from plenum.common.config_helper import PConfigHelper, PNodeConfigHelper
 
 Logger.setLogLevel(logging.NOTSET)
 logger = getlogger()
-config = getConfig()
+
+GENERAL_CONFIG_DIR = 'etc/indy'
 
 
 def get_data_for_role(pool_txn_data, role):
@@ -113,6 +123,7 @@ def warnfilters():
             'ignore',
             category=ResourceWarning,
             message='unclosed.*socket\.socket')
+
     return _
 
 
@@ -145,12 +156,12 @@ def warncheck(warnfilters):
 
 
 @pytest.fixture(scope="function", autouse=True)
-def limitTestRunningTime(request, tconf):
+def limitTestRunningTime(request):
     st = time.time()
     yield
     runningTime = time.time() - st
     time_limit = getValueFromModule(request, "TestRunningTimeLimitSec",
-                                    tconf.TestRunningTimeLimitSec)
+                                    plenum_config.TestRunningTimeLimitSec)
     if runningTime > time_limit:
         pytest.fail(
             'The running time of each test is limited by {} sec '
@@ -162,7 +173,7 @@ def limitTestRunningTime(request, tconf):
             '\t2. Override the `limitTestRunningTime` fixture '
             'for the test module.\n'
             'Firstly, try to use the option #1.'
-            ''.format(tconf.TestRunningTimeLimitSec, runningTime))
+            ''.format(plenum_config.TestRunningTimeLimitSec, runningTime))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -303,35 +314,102 @@ def logcapture(request, whitelist, concerningLogLevels):
         logging.getLogger().removeHandler(ch)
 
     request.addfinalizer(cleanup)
-    config = getConfig(tdir)
-    for k, v in overriddenConfigValues.items():
-        setattr(config, k, v)
+
+
+@pytest.fixture(scope="module")
+def config_helper_class():
+    return PConfigHelper
+
+
+@pytest.fixture(scope="module")
+def node_config_helper_class():
+    return PNodeConfigHelper
 
 
 @pytest.yield_fixture(scope="module")
-def nodeSet(request, tdir, nodeReg, allPluginsPath, patchPluginManager):
+def nodeSet(request, tdir, tconf, nodeReg, allPluginsPath, patchPluginManager):
     primaryDecider = getValueFromModule(request, "PrimaryDecider", None)
-    with TestNodeSet(nodeReg=nodeReg, tmpdir=tdir,
+    with TestNodeSet(tconf, nodeReg=nodeReg, tmpdir=tdir,
                      primaryDecider=primaryDecider,
                      pluginPaths=allPluginsPath) as ns:
         yield ns
 
 
+def _tdir(tdir_fact):
+    return tdir_fact.mktemp('').strpath
+
+
 @pytest.fixture(scope='module')
 def tdir(tmpdir_factory):
-    tempdir = tmpdir_factory.mktemp('').strpath
+    tempdir = _tdir(tmpdir_factory)
     logger.debug("module-level temporary directory: {}".format(tempdir))
     return tempdir
 
 
-another_tdir = tdir
+@pytest.fixture()
+def tdir_for_func(tmpdir_factory):
+    tempdir = _tdir(tmpdir_factory)
+    logging.debug("function-level temporary directory: {}".format(tempdir))
+    return tempdir
+
+
+def _client_tdir(temp_dir):
+    path = os.path.join(temp_dir, "home", "testuser")
+    os.makedirs(path)
+    return path
+
+
+@pytest.fixture(scope='module')
+def client_tdir(tdir):
+    tempdir = _client_tdir(tdir)
+    logger.debug("module-level client temporary directory: {}".format(tempdir))
+    return tempdir
 
 
 @pytest.fixture(scope='function')
-def tdir_for_func(tmpdir_factory):
-    tempdir = tmpdir_factory.mktemp('').strpath
-    logging.debug("function-level temporary directory: {}".format(tempdir))
+def client_tdir_for_func(tdir_for_func):
+    tempdir = _client_tdir(tdir_for_func)
+    logger.debug("function-level client temporary directory: {}".format(tempdir))
     return tempdir
+
+
+def _general_conf_tdir(tmp_dir):
+    general_config_dir = os.path.join(tmp_dir, GENERAL_CONFIG_DIR)
+    os.makedirs(general_config_dir)
+    general_config = os.path.join(general_config_dir, plenum_config.GENERAL_CONFIG_FILE)
+    shutil.copy(platform_config.__file__, general_config)
+    return general_config_dir
+
+
+@pytest.fixture(scope='module')
+def general_conf_tdir(tdir):
+    general_config_dir = _general_conf_tdir(tdir)
+    logger.debug("module-level general config directory: {}".format(general_config_dir))
+    return general_config_dir
+
+
+@pytest.fixture()
+def general_conf_tdir_for_func(tdir_for_func):
+    general_config_dir = _general_conf_tdir(tdir_for_func)
+    logger.debug("function-level general config directory: {}".format(general_config_dir))
+    return general_config_dir
+
+
+def _tconf(general_config):
+    config = getConfig(general_config)
+    for k, v in overriddenConfigValues.items():
+        setattr(config, k, v)
+    return config
+
+
+@pytest.fixture(scope="module")
+def tconf(general_conf_tdir):
+    return _tconf(general_conf_tdir)
+
+
+@pytest.fixture()
+def tconf_for_func(general_conf_tdir_for_func):
+    return _tconf(general_conf_tdir_for_func)
 
 
 @pytest.fixture(scope="module")
@@ -353,9 +431,9 @@ def looper(unstartedLooper):
     return unstartedLooper
 
 
-@pytest.fixture(scope="module")
-def pool(tmpdir_factory):
-    return Pool(tmpdir_factory)
+@pytest.fixture(scope="function")
+def pool(tdir_for_func, tconf_for_func):
+    return Pool(tmpdir=tdir_for_func, config=tconf_for_func)
 
 
 @pytest.fixture(scope="module")
@@ -387,8 +465,8 @@ def delayed_perf_chk(nodeSet):
 
 
 @pytest.fixture(scope="module")
-def clientAndWallet1(looper, nodeSet, tdir, up):
-    client, wallet = genTestClient(nodeSet, tmpdir=tdir)
+def clientAndWallet1(looper, nodeSet, client_tdir, up):
+    client, wallet = genTestClient(nodeSet, tmpdir=client_tdir)
     yield client, wallet
     client.stop()
 
@@ -421,7 +499,6 @@ def sent1(client1, request1):
 
 @pytest.fixture(scope="module")
 def reqAcked1(looper, nodeSet, client1, sent1, faultyNodes):
-
     numerOfNodes = len(nodeSet)
 
     # Wait until request received by all nodes
@@ -452,19 +529,18 @@ def reqAcked1(looper, nodeSet, client1, sent1, faultyNodes):
 
 
 @pytest.fixture(scope="module")
-def noRetryReq(conf, tdir, request):
-    oldRetryAck = conf.CLIENT_MAX_RETRY_ACK
-    oldRetryReply = conf.CLIENT_MAX_RETRY_REPLY
-    conf.baseDir = tdir
-    conf.CLIENT_MAX_RETRY_ACK = 0
-    conf.CLIENT_MAX_RETRY_REPLY = 0
+def noRetryReq(tconf, request):
+    oldRetryAck = tconf.CLIENT_MAX_RETRY_ACK
+    oldRetryReply = tconf.CLIENT_MAX_RETRY_REPLY
+    tconf.CLIENT_MAX_RETRY_ACK = 0
+    tconf.CLIENT_MAX_RETRY_REPLY = 0
 
     def reset():
-        conf.CLIENT_MAX_RETRY_ACK = oldRetryAck
-        conf.CLIENT_MAX_RETRY_REPLY = oldRetryReply
+        tconf.CLIENT_MAX_RETRY_ACK = oldRetryAck
+        tconf.CLIENT_MAX_RETRY_REPLY = oldRetryReply
 
     request.addfinalizer(reset)
-    return conf
+    return tconf
 
 
 @pytest.fixture(scope="module")
@@ -541,6 +617,12 @@ def looperWithoutNodeSet():
         yield looper
 
 
+@pytest.yield_fixture()
+def looper_without_nodeset_for_func():
+    with Looper() as looper:
+        yield looper
+
+
 @pytest.fixture(scope="module")
 def poolTxnNodeNames(request, index=""):
     nodeCount = getValueFromModule(request, "nodeCount", 4)
@@ -559,19 +641,6 @@ def poolTxnStewardNames(request):
 
 
 @pytest.fixture(scope="module")
-def conf(tdir):
-    return getConfig(tdir)
-
-
-# TODO: This fixture is probably not needed now, as getConfig takes the
-# `baseDir`. Confirm and remove
-@pytest.fixture(scope="module")
-def tconf(conf, tdir):
-    conf.baseDir = tdir
-    return conf
-
-
-@pytest.fixture(scope="module")
 def dirName():
     return os.path.dirname
 
@@ -585,21 +654,21 @@ def poolTxnData(request):
         data['seeds'][node_name] = node_name + '0' * (32 - len(node_name))
         steward_name = 'Steward' + str(i)
         data['seeds'][steward_name] = steward_name + \
-            '0' * (32 - len(steward_name))
+                                      '0' * (32 - len(steward_name))
 
         n_idr = SimpleSigner(seed=data['seeds'][node_name].encode()).identifier
-        s_idr = SimpleSigner(
-            seed=data['seeds'][steward_name].encode()).identifier
+        s_idr = DidSigner(seed=data['seeds'][steward_name].encode())
 
         data['txns'].append({
             TXN_TYPE: NYM,
             ROLE: STEWARD,
             ALIAS: steward_name,
-            TARGET_NYM: s_idr
+            TARGET_NYM: s_idr.identifier,
+            VERKEY: s_idr.verkey,
         })
         node_txn = {
             TXN_TYPE: NODE,
-            f.IDENTIFIER.nm: s_idr,
+            f.IDENTIFIER.nm: s_idr.identifier,
             TARGET_NYM: n_idr,
             DATA: {
                 ALIAS: node_name,
@@ -619,10 +688,11 @@ def poolTxnData(request):
 
         data['txns'].append(node_txn)
 
-    # # Add 4 Trustees
+    # Add 4 Trustees
     for i in range(4):
         trustee_name = 'Trs' + str(i)
-        data['seeds'][trustee_name] = trustee_name + '0' * (32 - len(trustee_name))
+        data['seeds'][trustee_name] = trustee_name + '0' * (
+                32 - len(trustee_name))
         t_sgnr = DidSigner(seed=data['seeds'][trustee_name].encode())
         data['txns'].append({
             TXN_TYPE: NYM,
@@ -632,49 +702,58 @@ def poolTxnData(request):
             VERKEY: t_sgnr.verkey
         })
 
-    # Below is some static data that is needed for some CLI tests
-    more_data = {'txns': [
-        {"identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC",
-         "dest": "4AdS22kC7xzb4bcqg9JATuCfAMNcQYcZa1u5eWzs6cSJ",
-         "type": "1",
-         "alias": "Alice"},
-        {"identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC",
-         "dest": "46Kq4hASUdvUbwR7s7Pie3x8f4HRB3NLay7Z9jh9eZsB",
-         "type": "1",
-         "alias": "Jason"},
-        {"identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC",
-         "dest": "3wpYnGqceZ8DzN3guiTd9rrYkWTwTHCChBSuo6cvkXTG",
-         "type": "1",
-         "alias": "John"},
-        {"identifier": "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC",
-         "dest": "4Yk9HoDSfJv9QcmJbLcXdWVgS7nfvdUqiVcvbSu8VBru",
-         "type": "1",
-         "alias": "Les"}
-    ], 'seeds': {
-        "Alice": "99999999999999999999999999999999",
-        "Jason": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "John": "dddddddddddddddddddddddddddddddd",
-        "Les": "ffffffffffffffffffffffffffffffff"
-    }}
+    more_data_seeds = \
+        {
+            "Alice": "99999999999999999999999999999999",
+            "Jason": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "John": "dddddddddddddddddddddddddddddddd",
+            "Les": "ffffffffffffffffffffffffffffffff"
+        }
+    more_data_users = []
+    for more_name, more_seed in more_data_seeds.items():
+        signer = DidSigner(seed=more_seed.encode())
+        more_data_users.append({TXN_TYPE: NYM, ALIAS: more_name, TARGET_NYM: signer.identifier, VERKEY: signer.verkey,
+                                f.IDENTIFIER.nm: "5rArie7XKukPCaEwq5XGQJnM9Fc5aZE3M9HAPVfMU2xC"})
 
-    data['txns'].extend(more_data['txns'])
-    data['seeds'].update(more_data['seeds'])
+    data['txns'].extend(more_data_users)
+    data['seeds'].update(more_data_seeds)
     return data
 
 
 @pytest.fixture(scope="module")
-def tdirWithPoolTxns(poolTxnData, tdir, tconf):
+def tdirWithPoolTxns(config_helper_class, poolTxnData, tdir, tconf):
     import getpass
     logging.debug("current user when creating new pool txn file: {}".
                   format(getpass.getuser()))
 
-    ledger = create_genesis_txn_init_ledger(tdir, tconf.poolTransactionsFile)
+    config_helper = config_helper_class(tconf, chroot=tdir)
+    ledger = create_genesis_txn_init_ledger(config_helper.genesis_dir, tconf.poolTransactionsFile)
 
     for item in poolTxnData["txns"]:
         if item.get(TXN_TYPE) == NODE:
             ledger.add(item)
     ledger.stop()
-    return tdir
+    return config_helper.genesis_dir
+
+
+@pytest.fixture(scope="module")
+def client_ledger_dir(client_tdir):
+    return client_tdir
+
+
+@pytest.fixture(scope="module")
+def tdirWithClientPoolTxns(poolTxnData, client_ledger_dir):
+    import getpass
+    logging.debug("current user when creating new pool txn file for client: {}".
+                  format(getpass.getuser()))
+
+    ledger = create_genesis_txn_init_ledger(client_ledger_dir, plenum_config.poolTransactionsFile)
+
+    for item in poolTxnData["txns"]:
+        if item.get(TXN_TYPE) == NODE:
+            ledger.add(item)
+    ledger.stop()
+    return client_ledger_dir
 
 
 @pytest.fixture(scope="module")
@@ -683,23 +762,26 @@ def domainTxnOrderedFields():
 
 
 @pytest.fixture(scope="module")
-def tdirWithDomainTxns(poolTxnData, tdir, tconf, domainTxnOrderedFields):
-    ledger = create_genesis_txn_init_ledger(tdir, tconf.domainTransactionsFile)
+def tdirWithDomainTxns(config_helper_class, poolTxnData, tdir, tconf, domainTxnOrderedFields):
+    config_helper = config_helper_class(tconf, chroot=tdir)
+    ledger = create_genesis_txn_init_ledger(config_helper.genesis_dir, tconf.domainTransactionsFile)
 
     for item in poolTxnData["txns"]:
         if item.get(TXN_TYPE) == NYM:
             ledger.add(item)
     ledger.stop()
-    return tdir
+    return config_helper.genesis_dir
 
 
 @pytest.fixture(scope="module")
-def tdirWithNodeKeepInited(tdir, poolTxnData, poolTxnNodeNames):
+def tdirWithNodeKeepInited(tdir, tconf, node_config_helper_class, poolTxnData, poolTxnNodeNames):
     seeds = poolTxnData["seeds"]
     for nName in poolTxnNodeNames:
         seed = seeds[nName]
         use_bls = nName in poolTxnData['nodesWithBls']
-        initNodeKeysForBothStacks(nName, tdir, seed, use_bls=use_bls, override=True)
+        config_helper = node_config_helper_class(nName, tconf, chroot=tdir)
+        initNodeKeysForBothStacks(nName, config_helper.keys_dir, seed, use_bls=use_bls, override=True)
+
 
 @pytest.fixture(scope="module")
 def poolTxnClientData(poolTxnClientNames, poolTxnData):
@@ -716,23 +798,23 @@ def poolTxnStewardData(poolTxnStewardNames, poolTxnData):
 
 
 @pytest.fixture(scope="module")
-def trustee_data(poolTxnData):
-    return get_data_for_role(poolTxnData, TRUSTEE)
-
-
-@pytest.fixture(scope="module")
 def pool_txn_stewards_data(poolTxnStewardNames, poolTxnData):
     return [(name, poolTxnData["seeds"][name].encode())
             for name in poolTxnStewardNames]
 
 
 @pytest.fixture(scope="module")
+def trustee_data(poolTxnData):
+    return get_data_for_role(poolTxnData, TRUSTEE)
+
+
+@pytest.fixture(scope="module")
 def stewards_and_wallets(looper, txnPoolNodeSet, pool_txn_stewards_data,
-                      tdirWithPoolTxns):
+                         tdirWithClientPoolTxns):
     clients_and_wallets = []
     for pool_txn_steward_data in pool_txn_stewards_data:
         steward_client, steward_wallet = buildPoolClientAndWallet(pool_txn_steward_data,
-                                              tdirWithPoolTxns)
+                                                                  tdirWithClientPoolTxns)
         looper.add(steward_client)
         ensureClientConnectedToNodesAndPoolLedgerSame(looper, steward_client,
                                                       *txnPoolNodeSet)
@@ -745,14 +827,13 @@ def stewards_and_wallets(looper, txnPoolNodeSet, pool_txn_stewards_data,
 
 
 @pytest.fixture(scope="module")
-def poolTxnClient(tdirWithPoolTxns, tdirWithDomainTxns, txnPoolNodeSet):
-    return genTestClient(txnPoolNodeSet, tmpdir=tdirWithPoolTxns,
+def poolTxnClient(tdirWithClientPoolTxns, txnPoolNodeSet):
+    return genTestClient(txnPoolNodeSet, tmpdir=tdirWithClientPoolTxns,
                          usePoolLedger=True)
 
 
 @pytest.fixture(scope="module")
 def testNodeClass(patchPluginManager):
-    TestNode.ledger_ids += []
     return TestNode
 
 
@@ -768,24 +849,39 @@ def txnPoolNodesLooper():
 
 
 @pytest.fixture(scope="module")
-def txnPoolNodeSet(patchPluginManager,
+def do_post_node_creation():
+    """
+    This fixture is used to do any changes on the newly created node. To use
+    this, override this fixture in test module or conftest and define the
+    changes in the function `_post_node_creation`
+    """
+
+    def _post_node_creation(node):
+        pass
+
+    return _post_node_creation
+
+
+@pytest.fixture(scope="module")
+def txnPoolNodeSet(node_config_helper_class,
+                   patchPluginManager,
                    txnPoolNodesLooper,
                    tdirWithPoolTxns,
                    tdirWithDomainTxns,
+                   tdir,
                    tconf,
                    poolTxnNodeNames,
                    allPluginsPath,
                    tdirWithNodeKeepInited,
-                   testNodeClass):
+                   testNodeClass,
+                   do_post_node_creation):
     with ExitStack() as exitStack:
         nodes = []
         for nm in poolTxnNodeNames:
-            node = exitStack.enter_context(
-                testNodeClass(nm,
-                              basedirpath=tdirWithPoolTxns,
-                              base_data_dir=tdirWithPoolTxns,
-                              config=tconf,
-                              pluginPaths=allPluginsPath))
+            node = exitStack.enter_context(create_new_test_node(
+                testNodeClass, node_config_helper_class, nm, tconf, tdir,
+                allPluginsPath))
+            do_post_node_creation(node)
             txnPoolNodesLooper.add(node)
             nodes.append(node)
         txnPoolNodesLooper.run(checkNodesConnected(nodes))
@@ -805,9 +901,8 @@ def txnPoolCliNodeReg(poolTxnData):
 
 
 @pytest.fixture(scope="module")
-def postingStatsEnabled(request):
-    config = getConfig()
-    config.SendMonitorStats = True
+def postingStatsEnabled(request, tconf):
+    tconf.SendMonitorStats = True
 
     # def reset():
     #    config.SendMonitorStats = False
@@ -863,12 +958,15 @@ def pluginManagerWithImportedModules(pluginManager, monkeypatch):
 
 
 @pytest.fixture
-def testNode(pluginManager, tdir):
+def testNode(pluginManager, tdir, tconf, node_config_helper_class):
     name = randomText(20)
     nodeReg = genNodeReg(names=[name])
     ha, cliname, cliha = nodeReg[name]
+    config_helper = node_config_helper_class(name, tconf, chroot=tdir)
     node = TestNode(name=name, ha=ha, cliname=cliname, cliha=cliha,
-                    nodeRegistry=copy(nodeReg), basedirpath=tdir, base_data_dir=tdir,
+                    nodeRegistry=copy(nodeReg),
+                    config_helper=config_helper,
+                    config=tconf,
                     primaryDecider=None, pluginPaths=None, seed=randomSeed())
     node.start(None)
     yield node
@@ -883,3 +981,134 @@ def set_info_log_level(request):
         Logger.setLogLevel(logging.NOTSET)
 
     request.addfinalizer(reset)
+
+
+# ####### SDK
+
+
+@pytest.fixture(scope='module')
+def sdk_pool_name():
+    p_name = "pool_name_" + randomText(13)
+    yield p_name
+    p_dir = os.path.join(os.path.expanduser("~/.indy_client/pool"), p_name)
+    if os.path.isdir(p_dir):
+        shutil.rmtree(p_dir, ignore_errors=True)
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_name():
+    w_name = "wallet_name_" + randomText(13)
+    yield w_name
+    w_dir = os.path.join(os.path.expanduser("~/.indy_client/wallet"), w_name)
+    if os.path.isdir(w_dir):
+        shutil.rmtree(w_dir, ignore_errors=True)
+
+
+async def _gen_pool_handler(work_dir, name):
+    txn_file_name = os.path.join(work_dir, "pool_transactions_genesis")
+    pool_config = json.dumps({"genesis_txn": str(txn_file_name)})
+    await create_pool_ledger_config(name, pool_config)
+    pool_handle = await open_pool_ledger(name, None)
+    return pool_handle
+
+
+@pytest.fixture(scope='module')
+def sdk_pool_handle(looper, txnPoolNodeSet, tdirWithPoolTxns, sdk_pool_name):
+    pool_handle = looper.loop.run_until_complete(
+        _gen_pool_handler(tdirWithPoolTxns, sdk_pool_name))
+    yield pool_handle
+    looper.loop.run_until_complete(close_pool_ledger(pool_handle))
+
+
+async def _gen_wallet_handler(pool_name, wallet_name):
+    await create_wallet(pool_name, wallet_name, None, None, None)
+    wallet_handle = await open_wallet(wallet_name, None, None)
+    return wallet_handle
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_handle(looper, sdk_pool_name, sdk_wallet_name):
+    wallet_handle = looper.loop.run_until_complete(
+        _gen_wallet_handler(sdk_pool_name, sdk_wallet_name))
+    yield wallet_handle
+    looper.loop.run_until_complete(close_wallet(wallet_handle))
+
+
+@pytest.fixture(scope='module')
+def sdk_trustee_seed(trustee_data):
+    _, seed = trustee_data[0]
+    return seed
+
+
+@pytest.fixture(scope='module')
+def sdk_steward_seed(poolTxnStewardData):
+    _, seed = poolTxnStewardData
+    return seed.decode()
+
+
+@pytest.fixture(scope='module')
+def sdk_client_seed(poolTxnClientData):
+    _, seed = poolTxnClientData
+    return seed.decode()
+
+
+@pytest.fixture(scope='module')
+def sdk_client_seed2(poolTxnClientNames, poolTxnData):
+    name = poolTxnClientNames[1]
+    seed = poolTxnData["seeds"][name]
+    return seed
+
+
+@pytest.fixture(scope='module')
+def sdk_new_client_seed():
+    return "Client10000000000000000000000000"
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_trustee(looper, sdk_wallet_handle, sdk_trustee_seed):
+    (trustee_did, trustee_verkey) = looper.loop.run_until_complete(
+        create_and_store_my_did(sdk_wallet_handle,
+                                json.dumps({'seed': sdk_trustee_seed})))
+    return sdk_wallet_handle, trustee_did
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_steward(looper, sdk_wallet_handle, sdk_steward_seed):
+    (steward_did, steward_verkey) = looper.loop.run_until_complete(
+        create_and_store_my_did(sdk_wallet_handle,
+                                json.dumps({'seed': sdk_steward_seed})))
+    return sdk_wallet_handle, steward_did
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_client(looper, sdk_wallet_handle, sdk_client_seed):
+    (client_did, _) = looper.loop.run_until_complete(
+        create_and_store_my_did(sdk_wallet_handle,
+                                json.dumps({'seed': sdk_client_seed})))
+    return sdk_wallet_handle, client_did
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_client2(looper, sdk_wallet_handle, sdk_client_seed2):
+    (client_did, _) = looper.loop.run_until_complete(
+        create_and_store_my_did(sdk_wallet_handle,
+                                json.dumps({'seed': sdk_client_seed2})))
+    return sdk_wallet_handle, client_did
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_new_client(looper, sdk_pool_handle, sdk_wallet_steward,
+                          sdk_new_client_seed):
+    wh, client_did = sdk_add_new_nym(looper, sdk_pool_handle,
+                                     sdk_wallet_steward,
+                                     seed=sdk_new_client_seed)
+    return wh, client_did
+
+
+@pytest.fixture(scope='module')
+def sdk_wallet_new_steward(looper, sdk_pool_handle, sdk_wallet_steward):
+    wh, client_did = sdk_add_new_nym(looper, sdk_pool_handle,
+                                     sdk_wallet_steward,
+                                     alias='new_steward_qwerty',
+                                     role='STEWARD')
+    return wh, client_did

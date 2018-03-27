@@ -24,17 +24,14 @@ cliNodeReg = OrderedDict([
     ('DeltaC', ('127.0.0.1', 9708))
 ])
 
-baseDir = '~/.plenum/'
 walletsDir = 'wallets'
-NODE_BASE_DATA_DIR = baseDir
-nodeDataDir = 'data/nodes'
 clientDataDir = 'data/clients'
-LOG_DIR = os.path.join(baseDir, "log")
 GENERAL_CONFIG_DIR = '/etc/indy'
 # walletDir = 'wallet'
 
 # it should be filled from baseConfig
 NETWORK_NAME = ''
+USER_CONFIG_DIR = None
 
 GENERAL_CONFIG_FILE = 'plenum_config.py'
 NETWORK_CONFIG_FILE = 'plenum_config.py'
@@ -123,13 +120,8 @@ STATS_SERVER_PORT = 30000
 STATS_SERVER_MESSAGE_BUFFER_MAX_SIZE = 1000
 
 # Node status configuration
+DUMP_VALIDATOR_INFO_INIT_SEC = 3
 DUMP_VALIDATOR_INFO_PERIOD_SEC = 60
-
-RAETLogLevel = "terse"
-RAETLogLevelCli = "mute"
-RAETLogFilePath = os.path.join(os.path.expanduser(baseDir), "raet.log")
-RAETLogFilePathCli = None
-RAETMessageTimeout = 60
 
 # Controls sending of view change messages, a node will only send view change
 # messages if it did not send any sent instance change messages in last
@@ -145,7 +137,12 @@ ToleratePrimaryDisconnection = 2
 ConsistencyProofsTimeout = 5
 
 # Timeout factor after which a node starts requesting transactions
-CatchupTransactionsTimeout = 5
+# We assume, that making consistency proof + iterate over all transactions (getAllTxn)
+# will take a little time (0.003 sec for making cp for 10 000 txns +
+#                          0.2 sec for getAllTxn for 10 000 txn)
+# Therefore, node communication is the most cost operation
+# Timeout for pool catchuping would be nodeCount * CatchupTransactionsTimeout
+CatchupTransactionsTimeout = 6
 
 
 # Log configuration
@@ -173,9 +170,6 @@ ExpectedConnectTime = 3.3 if sys.platform == 'win32' else 2
 EnsureLedgerDurability = False
 
 log_override_tags = dict(cli={}, demo={})
-
-# TODO needs to be refactored to use a transport protocol abstraction
-UseZStack = True
 
 
 # Number of messages zstack accepts at once
@@ -240,7 +234,7 @@ JSON_FIELD_LIMIT = 5 * 1024
 DATA_FIELD_LIMIT = 5 * 1024
 NONCE_FIELD_LIMIT = 512
 ORIGIN_FIELD_LIMIT = 128
-ENC_FIELD_LIMIT = 16
+ENC_FIELD_LIMIT = 5 * 1024
 RAW_FIELD_LIMIT = 5 * 1024
 SIGNATURE_TYPE_FIELD_LIMIT = 16
 BLS_KEY_LIMIT = 512
@@ -248,4 +242,5 @@ BLS_SIG_LIMIT = 512
 BLS_MULTI_SIG_LIMIT = 512
 VERSION_FIELD_LIMIT = 128
 
+PLUGIN_ROOT = 'plenum.server.plugin'
 ENABLED_PLUGINS = ['token', 'fees']

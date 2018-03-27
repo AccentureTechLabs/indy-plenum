@@ -14,6 +14,7 @@ Field = namedtuple("Field", ["nm", "tp"])
 
 class f:  # provides a namespace for reusable field constants
     REQUEST = Field('request', 'Request')
+    REQUESTS = Field('requests', List[Any])
     MSG = Field('msg', str)
     NODE_NAME = Field('nodeName', str)
     NAME = Field("name", str)
@@ -68,9 +69,9 @@ class f:  # provides a namespace for reusable field constants
     MSG_TYPE = Field("msg_type", str)
     PARAMS = Field("params", dict)
     PRIMARY = Field("primary", dict)
-    FEES = Field("fees", dict)
     SIGS = Field('signatures', dict)
     PLUGIN_FIELDS = Field('plugin_fields', dict)
+    FEES = Field('fees', dict)
 
 
 OPERATION = 'operation'

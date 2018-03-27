@@ -11,15 +11,12 @@ from typing import Dict, Tuple, List
 from plenum.common.constants import TXN_TYPE, NODE, TARGET_NYM, DATA, ALIAS, \
     NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT, VERKEY, SERVICES, \
     VALIDATOR, CLIENT_STACK_SUFFIX, POOL_LEDGER_ID, DOMAIN_LEDGER_ID, BLS_KEY
-from plenum.common.exceptions import UnsupportedOperation, \
-    InvalidClientRequest
-from plenum.common.request import Request
+from plenum.common.exceptions import UnsupportedOperation
 from plenum.common.stack_manager import TxnStackManager
 from plenum.common.types import NodeDetail
 from plenum.persistence.storage import initKeyValueStorage
 from plenum.persistence.util import pop_merkle_info
 from plenum.server.pool_req_handler import PoolRequestHandler
-from plenum.server.suspicion_codes import Suspicions
 from state.pruning_state import PruningState
 from stp_core.common.log import getlogger
 from stp_core.network.auth_mode import AuthMode
@@ -31,7 +28,7 @@ logger = getlogger()
 
 class PoolManager:
     @abstractmethod
-    def getStackParamsAndNodeReg(self, name, basedirpath, nodeRegistry=None,
+    def getStackParamsAndNodeReg(self, name, keys_dir, nodeRegistry=None,
                                  ha=None, cliname=None, cliha=None):
         """
         Returns a tuple(nodestack, clientstack, nodeReg)
@@ -66,10 +63,12 @@ class PoolManager:
         """
 
     @abstractmethod
-    def get_rank_of(self, node_id) -> Optional[int]:
+    def get_rank_of(self, node_id, nodeReg=None) -> Optional[int]:
         """Return node rank among active pool validators by id
 
         :param node_id: node's id
+        :param nodeReg: (optional) node registry to operate with. If not specified,
+                        current one is used.
         :return: rank of the node or None if not found
         """
 
@@ -80,13 +79,15 @@ class PoolManager:
         return self.get_rank_of(self.id)
 
     @abstractmethod
-    def get_name_by_rank(self, rank) -> Optional[str]:
+    def get_name_by_rank(self, rank, nodeReg=None) -> Optional[str]:
         # Needed for communicating primary name to others and also nodeReg
         # uses node names (alias) and not ids
         # TODO: Should move to using node ids and not node names (alias)
         """Return node name (alias) by rank among active pool validators
 
         :param rank: rank of the node
+        :param nodeReg: (optional) node registry to operate with. If not specified,
+                        current one is used.
         :return: name of the node or None if not found
         """
 
@@ -98,9 +99,8 @@ class HasPoolManager:
             self.poolManager = TxnPoolManager(self, ha=ha, cliname=cliname,
                                               cliha=cliha)
             self.register_executer(POOL_LEDGER_ID, self.poolManager.executePoolTxnBatch)
-            # self.requestExecuter[POOL_LEDGER_ID] = self.poolManager.executePoolTxnBatch
         else:
-            self.poolManager = RegistryPoolManager(self.name, self.basedirpath,
+            self.poolManager = RegistryPoolManager(self.name, self.keys_dir,
                                                    nodeRegistry, ha, cliname,
                                                    cliha)
 
@@ -110,18 +110,19 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         self.node = node
         self.name = node.name
         self.config = node.config
-        self.basedirpath = node.basedirpath
+        self.genesis_dir = node.genesis_dir
+        self.keys_dir = node.keys_dir
         self._ledger = None
         self._id = None
 
         TxnStackManager.__init__(
-            self, self.name, self.basedirpath, isNode=True)
+            self, self.name, node.genesis_dir, node.keys_dir, isNode=True)
         self.state = self.loadState()
         self.reqHandler = self.getPoolReqHandler()
         self.initPoolState()
         self._load_nodes_order_from_ledger()
         self.nstack, self.cstack, self.nodeReg, self.cliNodeReg = \
-            self.getStackParamsAndNodeReg(self.name, self.basedirpath, ha=ha,
+            self.getStackParamsAndNodeReg(self.name, self.keys_dir, ha=ha,
                                           cliname=cliname, cliha=cliha)
 
         self._dataFieldsValidators = (
@@ -161,7 +162,7 @@ class TxnPoolManager(PoolManager, TxnStackManager):
     def ledgerFile(self):
         return self.config.poolTransactionsFile
 
-    def getStackParamsAndNodeReg(self, name, basedirpath, nodeRegistry=None,
+    def getStackParamsAndNodeReg(self, name, keys_dir, nodeRegistry=None,
                                  ha=None, cliname=None, cliha=None):
         nodeReg, cliNodeReg, nodeKeys = self.parseLedgerForHaAndKeys(
             self.ledger)
@@ -176,7 +177,6 @@ class TxnPoolManager(PoolManager, TxnStackManager):
                       ha=HA('0.0.0.0', ha[1]),
                       main=True,
                       auth_mode=AuthMode.RESTRICTED.value)
-        nodeReg[name] = HA(*ha)
 
         cliname = cliname or (name + CLIENT_STACK_SUFFIX)
         if not cliha:
@@ -185,11 +185,10 @@ class TxnPoolManager(PoolManager, TxnStackManager):
                       ha=HA('0.0.0.0', cliha[1]),
                       main=True,
                       auth_mode=AuthMode.ALLOW_ANY.value)
-        cliNodeReg[cliname] = HA(*cliha)
 
-        if basedirpath:
-            nstack['basedirpath'] = basedirpath
-            cstack['basedirpath'] = basedirpath
+        if keys_dir:
+            nstack['basedirpath'] = keys_dir
+            cstack['basedirpath'] = keys_dir
 
         return nstack, cstack, nodeReg, cliNodeReg
 
@@ -201,7 +200,7 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         :param ppTime: PrePrepare request time
         :param reqs: request
         """
-        committedTxns = self.reqHandler.commit(len(reqs), stateRoot, txnRoot)
+        committedTxns = self.reqHandler.commit(len(reqs), stateRoot, txnRoot, ppTime)
         self.node.updateSeqNoMap(committedTxns)
         for txn in committedTxns:
             t = deepcopy(txn)
@@ -213,11 +212,11 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         return committedTxns
 
     def onPoolMembershipChange(self, txn):
-        if txn[TXN_TYPE] == NODE:
+        if txn[TXN_TYPE] == NODE and DATA in txn:
             nodeName = txn[DATA][ALIAS]
             nodeNym = txn[TARGET_NYM]
 
-            self._order_node(nodeNym, nodeName)
+            self._set_node_order(nodeNym, nodeName)
 
             def _updateNode(txn):
                 if {NODE_IP, NODE_PORT, CLIENT_IP, CLIENT_PORT}. \
@@ -252,17 +251,20 @@ class TxnPoolManager(PoolManager, TxnStackManager):
     def addNewNodeAndConnect(self, txn):
         nodeName = txn[DATA][ALIAS]
         if nodeName == self.name:
-            logger.debug("{} not adding itself to node registry".
+            logger.debug("{} adding itself to node registry".
                          format(self.name))
-            return
-        self.connectNewRemote(txn, nodeName, self.node)
+            self.node.nodeReg[nodeName] = HA(txn[DATA][NODE_IP],
+                                             txn[DATA][NODE_PORT])
+            self.node.cliNodeReg[nodeName + CLIENT_STACK_SUFFIX] = \
+                HA(txn[DATA][CLIENT_IP],
+                   txn[DATA][CLIENT_PORT])
+        else:
+            self.connectNewRemote(txn, nodeName, self.node, nodeName != self.name)
         self.node.nodeJoined(txn)
 
     def node_about_to_be_disconnected(self, nodeName):
         if self.node.master_primary_name == nodeName:
-            self.node.sendInstanceChange(
-                self.node.viewNo + 1,
-                Suspicions.PRIMARY_ABOUT_TO_BE_DISCONNECTED)
+            self.node.view_changer.on_primary_about_to_be_disconnected()
 
     def nodeHaChanged(self, txn):
         nodeNym = txn[TARGET_NYM]
@@ -270,13 +272,39 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         # TODO: Check if new HA is same as old HA and only update if
         # new HA is different.
         if nodeName == self.name:
+            # Update itself in node registry if needed
+            ha_changed = False
+            (ip, port) = self.node.nodeReg[nodeName]
+            if NODE_IP in txn[DATA] and ip != txn[DATA][NODE_IP]:
+                ip = txn[DATA][NODE_IP]
+                ha_changed = True
+
+            if NODE_PORT in txn[DATA] and port != txn[DATA][NODE_PORT]:
+                port = txn[DATA][NODE_PORT]
+                ha_changed = True
+
+            if ha_changed:
+                self.node.nodeReg[nodeName] = HA(ip, port)
+
+            ha_changed = False
+            (ip, port) = self.node.cliNodeReg[nodeName + CLIENT_STACK_SUFFIX]
+            if CLIENT_IP in txn[DATA] and ip != txn[DATA][CLIENT_IP]:
+                ip = txn[DATA][CLIENT_IP]
+                ha_changed = True
+
+            if CLIENT_PORT in txn[DATA] and port != txn[DATA][CLIENT_PORT]:
+                port = txn[DATA][CLIENT_PORT]
+                ha_changed = True
+
+            if ha_changed:
+                self.node.cliNodeReg[nodeName + CLIENT_STACK_SUFFIX] = HA(ip, port)
+
             self.node.nodestack.onHostAddressChanged()
             self.node.clientstack.onHostAddressChanged()
         else:
             rid = self.stackHaChanged(txn, nodeName, self.node)
             if rid:
                 self.node.nodestack.outBoxes.pop(rid, None)
-            # self.node.sendPoolInfoToClients(txn)
         self.node_about_to_be_disconnected(nodeName)
 
     def nodeKeysChanged(self, txn):
@@ -298,7 +326,6 @@ class TxnPoolManager(PoolManager, TxnStackManager):
             rid = self.stackKeysChanged(txn, nodeName, self.node)
             if rid:
                 self.node.nodestack.outBoxes.pop(rid, None)
-            # self.node.sendPoolInfoToClients(txn)
         self.node_about_to_be_disconnected(nodeName)
 
     def nodeServicesChanged(self, txn):
@@ -348,15 +375,6 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         _, nodeTxn = self.getNodeInfoFromLedger(nym)
         return nodeTxn[DATA][ALIAS]
 
-    # def doStaticValidation(self, identifier, reqId, operation):
-    #     pass
-
-    # def doDynamicValidation(self, request: Request):
-    #     self.reqHandler.validate(request)
-
-    # def applyReq(self, request: Request, cons_time: int):
-    #     return self.reqHandler.apply(request, cons_time)
-
     @property
     def merkleRootHash(self) -> str:
         return self.ledger.root_hash
@@ -396,35 +414,41 @@ class TxnPoolManager(PoolManager, TxnStackManager):
         self._ordered_node_ids = OrderedDict()
         for _, txn in self.ledger.getAllTxn():
             if txn[TXN_TYPE] == NODE:
-                self._order_node(txn[TARGET_NYM], txn[DATA][ALIAS])
+                self._set_node_order(txn[TARGET_NYM], txn[DATA][ALIAS])
 
-    def _order_node(self, nodeNym, nodeName):
+    def _set_node_order(self, nodeNym, nodeName):
         curName = self._ordered_node_ids.get(nodeNym)
-
         if curName is None:
-            logger.info("{} node {} ordered, NYM {}".format(
-                        self.name, nodeName, nodeNym))
             self._ordered_node_ids[nodeNym] = nodeName
+            logger.info("{} sets node {} ({}) order to {}".format(
+                        self.name, nodeName, nodeNym,
+                        len(self._ordered_node_ids[nodeNym])))
         elif curName != nodeName:
             msg = ("{} is trying to order already ordered node {} ({}) "
                    "with other alias {}".format(self.name, curName, nodeNym, nodeName))
             logger.warning(msg)
             assert False, msg
 
-    @property
-    def node_ids_ordered_by_rank(self) -> List:
+    def node_ids_ordered_by_rank(self, nodeReg=None) -> List:
+        if nodeReg is None:
+            nodeReg = self.nodeReg
         return [nym for nym, name in self._ordered_node_ids.items()
-                if name in self.nodeReg]
+                if name in nodeReg]
 
-    def get_rank_of(self, node_id) -> Optional[int]:
+    def get_rank_of(self, node_id, nodeReg=None) -> Optional[int]:
         if self.id is None:
             # This can happen if a non-genesis node starts
             return None
-        return self._get_rank(node_id, self.node_ids_ordered_by_rank)
+        return self._get_rank(node_id, self.node_ids_ordered_by_rank(nodeReg))
 
-    def get_name_by_rank(self, rank) -> Optional[str]:
+    def get_rank_by_name(self, name, nodeReg=None) -> Optional[int]:
+        for nym, nm in self._ordered_node_ids.items():
+            if name == nm:
+                return self.get_rank_of(nym, nodeReg)
+
+    def get_name_by_rank(self, rank, nodeReg=None) -> Optional[str]:
         try:
-            nym = self.node_ids_ordered_by_rank[rank]
+            nym = self.node_ids_ordered_by_rank(nodeReg)[rank]
         except IndexError:
             return None
         else:
@@ -440,31 +464,31 @@ class TxnPoolManager(PoolManager, TxnStackManager):
 class RegistryPoolManager(PoolManager):
     # This is the old way of managing the pool nodes information and
     # should be deprecated.
-    def __init__(self, name, basedirpath, nodeRegistry, ha, cliname, cliha):
+    def __init__(self, name, keys_dir, nodeRegistry, ha, cliname, cliha):
         self._ordered_node_names = None
 
         self.nstack, self.cstack, self.nodeReg, self.cliNodeReg = \
-            self.getStackParamsAndNodeReg(name=name, basedirpath=basedirpath,
+            self.getStackParamsAndNodeReg(name=name, keys_dir=keys_dir,
                                           nodeRegistry=nodeRegistry, ha=ha,
                                           cliname=cliname, cliha=cliha)
 
-    def getStackParamsAndNodeReg(self, name, basedirpath, nodeRegistry=None,
+    def getStackParamsAndNodeReg(self, name, keys_dir, nodeRegistry=None,
                                  ha=None, cliname=None, cliha=None):
         nstack, nodeReg, cliNodeReg = self.getNodeStackParams(name,
                                                               nodeRegistry,
                                                               ha,
-                                                              basedirpath)
+                                                              keys_dir)
 
         cstack = self.getClientStackParams(name, nodeRegistry,
                                            cliname=cliname, cliha=cliha,
-                                           basedirpath=basedirpath)
+                                           keys_dir=keys_dir)
 
         return nstack, cstack, nodeReg, cliNodeReg
 
     @staticmethod
     def getNodeStackParams(name, nodeRegistry: Dict[str, HA],
                            ha: HA = None,
-                           basedirpath: str = None) -> Tuple[dict, dict, dict]:
+                           keys_dir: str = None) -> Tuple[dict, dict, dict]:
         """
         Return tuple(nodeStack params, nodeReg)
         """
@@ -486,14 +510,14 @@ class RegistryPoolManager(PoolManager):
                       main=True,
                       auth_mode=AuthMode.RESTRICTED.value)
 
-        if basedirpath:
-            nstack['basedirpath'] = basedirpath
+        if keys_dir:
+            nstack['basedirpath'] = keys_dir
 
         return nstack, nodeReg, cliNodeReg
 
     @staticmethod
     def getClientStackParams(name, nodeRegistry: Dict[str, HA], cliname,
-                             cliha, basedirpath) -> dict:
+                             cliha, keys_dir) -> dict:
         """
         Return clientStack params
         """
@@ -517,8 +541,8 @@ class RegistryPoolManager(PoolManager):
                       main=True,
                       auth_mode=AuthMode.ALLOW_ANY.value)
 
-        if basedirpath:
-            cstack['basedirpath'] = basedirpath
+        if keys_dir:
+            cstack['basedirpath'] = keys_dir
 
         return cstack
 
@@ -534,16 +558,20 @@ class RegistryPoolManager(PoolManager):
     def id(self):
         return self.nstack['name']
 
-    @property
-    def node_names_ordered_by_rank(self) -> List:
-        return sorted(self.nodeReg.keys())
+    def node_names_ordered_by_rank(self, nodeReg=None) -> List:
+        if nodeReg is None:
+            nodeReg = self.nodeReg
+        return sorted(nodeReg.keys())
 
-    def get_rank_of(self, node_id) -> Optional[int]:
+    def get_rank_of(self, node_id, nodeReg=None) -> Optional[int]:
         # TODO node_id here has got another meaning
-        return self._get_rank(node_id, self.node_names_ordered_by_rank)
+        return self._get_rank(node_id, self.node_names_ordered_by_rank(nodeReg))
 
-    def get_name_by_rank(self, rank) -> Optional[str]:
+    def get_rank_by_name(self, name, nodeReg=None) -> Optional[int]:
+        return self.get_rank_of(name, nodeReg)
+
+    def get_name_by_rank(self, rank, nodeReg=None) -> Optional[str]:
         try:
-            return self.node_names_ordered_by_rank[rank]
+            return self.node_names_ordered_by_rank(nodeReg)[rank]
         except IndexError:
             return None

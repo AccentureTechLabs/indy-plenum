@@ -66,7 +66,7 @@ class KeyValueStorage(metaclass=ABCMeta):
         c = 0
         for _ in self.iterator():
             c += 1
-        return sum(1 for _ in self.iterator())
+        return c
 
     def _has_key(self, key):
         try:
@@ -74,6 +74,9 @@ class KeyValueStorage(metaclass=ABCMeta):
             return True
         except KeyError:
             return False
+
+    def get_equal_or_prev(self, key):
+        raise NotImplementedError()
 
     def __contains__(self, key):
         return self._has_key(key)
